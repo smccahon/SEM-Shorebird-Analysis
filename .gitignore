@@ -1,0 +1,15 @@
+.Rproj.user/
+Resources/
+processed_data/
+raw_data/
+processed_data/
+/plots
+.Rhistory
+*.docx
+*.jpg
+*.png
+*.tiff
+*.tif
+*.xlsx
+*.jpeg
+*.pptx
