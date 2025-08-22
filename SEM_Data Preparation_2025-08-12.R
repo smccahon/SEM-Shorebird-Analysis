@@ -1,14 +1,16 @@
 #----------------------------------------#
 #          SEM Data Preparation          #
 # Created by Shelby McCahon on 8/01/2025 #
+#         Modified on 8/22/2025          #
 #----------------------------------------#
 
 # load packages
 library(tidyverse)
 
 # load data
-birds <- read.csv("original_data/Body_Condition_Habitat_Analysis_2025-05-29.csv")
-invert <- read.csv("original_data/Macroinvertebrate_Analysis_2025-04-02.csv")
+birds <- read.csv("original_data/shorebird_body_condition_data_2025-05-29.csv")
+invert <- read.csv("original_data/macroinvertebrate_data_2025-08-22.csv")
+wetland <- read.csv("original_data/neonic_wetland_survey_data_2025-08-12.csv")
 
 #------------------------------------------------------------------------------#
 #                         Shorebird Data Preparation                        ----                        
@@ -109,7 +111,7 @@ write.csv(birds.cs_cleaned, "cleaned_data/shorebird_data_cleaned_2025-08-11.csv"
 #                         Invert Data Preparation                           ----                        
 #------------------------------------------------------------------------------#   
 
-### ...create body condition index with PCA ------------------------------------
+### ...create water quality index with PCA -------------------------------------
 
 # subset the dataset to only include relevant variables
 invert_subset <- invert.cs[, c("Conductivity_uS.cm", "Salinity_ppt", 
@@ -138,11 +140,14 @@ invert.cs[complete.cases(invert_subset), "WaterQuality"] <- pca_scores[, 1]
 ### ...trim down data and export file for analysis -----------------------------
 invert.cs_cleaned <- invert.cs %>% 
   select(Wetland, Season, pH_probe, Biomass, PesticideInvert_ng.g, 
-         WaterDetection, DominantLandUse, Dist_Closest_Wetland_m,
+         WaterNeonicDetection, DominantCrop, NearestCropDistance_m,
+         Dist_Closest_Wetland_m, NearestCropType, 
          PercentLocalVeg_50m, Julian, PercentAg, Buffered,
          WaterQuality, Diversity, InvertPesticideDetection, Permanence,
          NearestCropDistance_m, AgCategory, ShorebirdsSeen,
-         NeonicInvert_ng.g, NeonicWater_ng.L, DominantCrop, NearestCropType)
+         NeonicInvert_ng.g, NeonicWater_ng.L, DominantCrop, NearestCropType,
+         PrecipitationAmount_7days, DaysSinceLastPrecipitation_5mm, 
+         AnnualSnowfall_in, EnvDetection)
 
 write.csv(invert.cs_cleaned, "cleaned_data/invert_data_cleaned_2025-08-11.csv",
           row.names = FALSE)
