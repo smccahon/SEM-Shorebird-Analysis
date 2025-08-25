@@ -1,7 +1,7 @@
 #----------------------------------------#
 #          SEM Data Preparation          #
 # Created by Shelby McCahon on 8/01/2025 #
-#         Modified on 8/22/2025          #
+#         Modified on 8/25/2025          #
 #----------------------------------------#
 
 # load packages
@@ -102,7 +102,8 @@ birds.cs_cleaned <- birds.cs %>%
          Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
          AnyDetection, BodyCondition, MigStatus, AgCategory, SPEI, Sex, Tri, 
          Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
-         InvertPesticideDetection, WaterOrInvertDetection, FatteningIndex)
+         InvertPesticideDetection, EnvDetection, FatteningIndex,
+         AnnualSnowfall_in, PrecipitationAmount_7days, DaysSinceLastPrecipitation_5mm)
 
 write.csv(birds.cs_cleaned, "cleaned_data/shorebird_data_cleaned_2025-08-11.csv",
           row.names = FALSE)
