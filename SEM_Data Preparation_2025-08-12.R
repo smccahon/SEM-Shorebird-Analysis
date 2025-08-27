@@ -1,7 +1,7 @@
 #----------------------------------------#
 #          SEM Data Preparation          #
 # Created by Shelby McCahon on 8/01/2025 #
-#         Modified on 8/25/2025          #
+#         Modified on 8/26/2025          #
 #----------------------------------------#
 
 # load packages
@@ -33,18 +33,10 @@ birds$formatted_time <- format(as.POSIXct(birds$seconds_since_midnight,
                                           origin = "1970-01-01", tz = "UTC"), 
                                "%H:%M")
 
-# standardize data
-birds.cs <- birds %>%
-  mutate(across(where(is.numeric), scale))
-
-invert.cs <- invert %>%
-  mutate(across(where(is.numeric), scale))
-
-
 ### ...create body condition index with PCA ------------------------------------
 
 # subset the dataset to only include relevant variables
-birds_subset <- birds.cs[, c("Fat", "Mass", "PecSizeBest")]
+birds_subset <- birds[, c("Fat", "Mass", "PecSizeBest")]
 
 # remove rows with NAs
 birds_subset_clean <- birds_subset[complete.cases(birds_subset), ] # n = 152
@@ -61,17 +53,14 @@ pca_scores <- pca_result$x
 
 # Merge PCA scores back to the original dataset
 # Create a data frame to store the PCA scores for the rows with no missing data
-birds.cs$BodyCondition <- NA  # Initialize with NA values
+birds$BodyCondition <- NA  # Initialize with NA values
 
 # Add the principal component scores for the rows without NA values
-birds.cs[complete.cases(birds_subset), "BodyCondition"] <- pca_scores[, 1]
-
-birds.cs_sorted <- birds.cs %>% 
-  select(Individual, Site, Event, )
+birds[complete.cases(birds_subset), "BodyCondition"] <- pca_scores[, 1]
 
 ### ...create fattening index with PCA -----------------------------------------
 # subset the dataset to only include relevant variables
-birds_subset <- birds.cs[, c("Beta", "Tri")]
+birds_subset <- birds[, c("Beta", "Tri")]
 
 # remove rows with NAs
 birds_subset_clean <- birds_subset[complete.cases(birds_subset), ] # n = 89
@@ -88,14 +77,14 @@ pca_scores <- pca_result$x
 
 # Merge PCA scores back to the original dataset
 # Create a data frame to store the PCA scores for the rows with no missing data
-birds.cs$FatteningIndex <- NA  # Initialize with NA values
+birds$FatteningIndex <- NA  # Initialize with NA values
 
 # Add the principal component scores for the rows without NA values
-birds.cs[complete.cases(birds_subset), "FatteningIndex"] <- pca_scores[, 1]
+birds[complete.cases(birds_subset), "FatteningIndex"] <- pca_scores[, 1]
 
 ### ...trim down data and export file for analysis -----------------------------
-birds.cs_cleaned <- birds.cs %>% 
-  select(Individual, Site, Event, Age, Fat, PecSizeBest, Beta, Permanence, 
+birds_cleaned <- birds %>% 
+  select(Individual, Site, Event, Season, Age, Fat, PecSizeBest, Beta, Permanence, 
          NearestCropDistance_m, Max_Flock_Size,
          PlasmaDetection, seconds_since_midnight, Species, PercentAg, 
          Percent_Total_Veg, Julian, Mass, OverallNeonic,
@@ -105,7 +94,7 @@ birds.cs_cleaned <- birds.cs %>%
          InvertPesticideDetection, EnvDetection, FatteningIndex,
          AnnualSnowfall_in, PrecipitationAmount_7days, DaysSinceLastPrecipitation_5mm)
 
-write.csv(birds.cs_cleaned, "cleaned_data/shorebird_data_cleaned_2025-08-11.csv",
+write.csv(birds_cleaned, "cleaned_data/shorebird_data_cleaned_2025-08-11.csv",
           row.names = FALSE)
 
 #------------------------------------------------------------------------------#
@@ -115,7 +104,7 @@ write.csv(birds.cs_cleaned, "cleaned_data/shorebird_data_cleaned_2025-08-11.csv"
 ### ...create water quality index with PCA -------------------------------------
 
 # subset the dataset to only include relevant variables
-invert_subset <- invert.cs[, c("Conductivity_uS.cm", "Salinity_ppt", 
+invert_subset <- invert[, c("Conductivity_uS.cm", "Salinity_ppt", 
                                "TDS_mg.L")]
 
 # remove rows with NAs
@@ -133,13 +122,13 @@ pca_scores <- pca_result$x
 
 # Merge PCA scores back to the original dataset
 # Create a data frame to store the PCA scores for the rows with no missing data
-invert.cs$WaterQuality <- NA  # Initialize with NA values
+invert$WaterQuality <- NA  # Initialize with NA values
 
 # Add the principal component scores for the rows without NA values
-invert.cs[complete.cases(invert_subset), "WaterQuality"] <- pca_scores[, 1]
+invert[complete.cases(invert_subset), "WaterQuality"] <- pca_scores[, 1]
 
 ### ...trim down data and export file for analysis -----------------------------
-invert.cs_cleaned <- invert.cs %>% 
+invert_cleaned <- invert %>% 
   select(Wetland, Season, pH_probe, Biomass, PesticideInvert_ng.g, 
          WaterNeonicDetection, DominantCrop, NearestCropDistance_m,
          Dist_Closest_Wetland_m, NearestCropType, 
@@ -150,7 +139,7 @@ invert.cs_cleaned <- invert.cs %>%
          PrecipitationAmount_7days, DaysSinceLastPrecipitation_5mm, 
          AnnualSnowfall_in, EnvDetection)
 
-write.csv(invert.cs_cleaned, "cleaned_data/invert_data_cleaned_2025-08-11.csv",
+write.csv(invert_cleaned, "cleaned_data/invert_data_cleaned_2025-08-11.csv",
           row.names = FALSE)
 
 
