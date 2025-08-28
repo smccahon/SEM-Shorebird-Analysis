@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 8/22/2025 #
-#         Modified on 8/26/2025          #
+#         Modified on 8/28/2025          #
 #----------------------------------------#
 
 # load packages
@@ -30,7 +30,6 @@ wetland <- wetland %>%
 # Julian or season? Julian seems to cause more problems but its continuous
 # Dominant crop or % cropland cover? Could run both models and interchange
 # variables and use AIC to help decide
-# permanence as factor or ordinal variable?
 # might need to handle Diversity differently (could be zero-inflated)
 
 #------------------------------------------------------------------------------#
@@ -87,6 +86,11 @@ invert <- invert %>%
     Buffered = case_when(
       Buffered == "Y" ~ 1,
       Buffered == "N" ~ 0,
+      TRUE ~ NA_real_),
+    Permanence = case_when(
+      Permanence %in% c("Temporary", "Seasonal") ~ 1,
+      Permanence == "Semipermanent" ~ 2,
+      Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
   
@@ -109,6 +113,11 @@ wetland <- wetland %>%
   Buffered = case_when(
     Buffered == "Y" ~ 1,
     Buffered == "N" ~ 0,
+    TRUE ~ NA_real_),
+  Permanence = case_when(
+    Permanence %in% c("Temporary", "Seasonal") ~ 1,
+    Permanence == "Semipermanent" ~ 2,
+    Permanence == "Permanent" ~ 3,
     TRUE ~ NA_real_))
 
 #------------------------------------------------------------------------------#
@@ -142,74 +151,88 @@ summary(aov(data = wetland, PercentAg ~ DominantCrop)) # p < 0.001
 #------------------------------------------------------------------------------# 
 
 wetland.1 <- wetland %>% 
-  mutate(across(c(AnnualSnowfall_in, PercentAg, DaysSinceLastPrecipitation_5mm), 
+  mutate(across(c(AnnualSnowfall_in, PercentAg, DaysSinceLastPrecipitation_5mm,
+                  SPEI), 
                 scale))
 
 m1 <- glm(EnvDetection ~ PercentAg + AnnualSnowfall_in + 
-            DaysSinceLastPrecipitation_5mm + Season + Permanence, 
+            DaysSinceLastPrecipitation_5mm + Season + Permanence + SPEI, 
             family = "binomial", data = wetland.1)
 
 #---
 
 birds.2 <- birds %>% 
-  mutate(across(c(seconds_since_midnight, PercentAg, Julian), 
+  mutate(across(c(seconds_since_midnight, PercentAg, Julian, SPEI), 
                 scale))
 
 m2 <- glmmTMB(PlasmaDetection ~ EnvDetection + seconds_since_midnight + 
-                PercentAg + Julian + (1 | Site), family = "binomial", 
+                PercentAg + Julian + SPEI + (1 | Site), family = "binomial", 
               data = birds.2)
 
 #---
 
 invert.3 <- invert %>% 
-  mutate(across(c(PercentLocalVeg_50m, PercentAg, Julian, pH_probe), 
+  mutate(across(c(PercentLocalVeg_50m, PercentAg, Julian), 
                 scale))
 
-m3 <- cpglm(Biomass ~ PercentAg + Julian + EnvDetection +
-           PercentLocalVeg_50m + WaterQuality + pH_probe, data = invert.3,
-         link = "log")
+m3 <- glm(Biomass ~ PercentAg + Julian + EnvDetection +
+           PercentLocalVeg_50m + WaterQuality + Permanence, data = invert.3)
 
 #---
 
 birds.4 <- birds %>% 
-  mutate(across(c(seconds_since_midnight, Biomass, Julian), 
+  mutate(across(c(seconds_since_midnight, Biomass, Julian, SPEI), 
                 scale))
 
-m4 <- lm(BodyCondition ~ seconds_since_midnight + Biomass +
-           Diversity + Julian, 
+m4 <- lmer(BodyCondition ~ seconds_since_midnight + Biomass + Julian + SPEI +
+           PlasmaDetection + (1 | Site), 
          data = birds.4)
 
 #---
 
 invert.5 <- invert %>% 
-  mutate(across(c(PercentAg, pH_probe, Julian, AnnualSnowfall_in), 
+  mutate(across(c(PercentAg, Julian, AnnualSnowfall_in), 
                 scale))
 
-m5 <- lm(PercentLocalVeg_50m ~ PercentAg + WaterQuality + Julian + pH_probe +
+m5 <- lm(PercentLocalVeg_50m ~ PercentAg + WaterQuality + Julian + Permanence +
            AnnualSnowfall_in, 
          data = invert.5)
 
 #---
 
-invert.6 <- invert %>% 
-  mutate(across(c(PercentAg, PercentLocalVeg_50m, Julian, pH_probe), 
+birds.6 <- birds %>% 
+  mutate(across(c(seconds_since_midnight, Biomass, SPEI, Julian),
                 scale))
 
-m6 <- glm(Diversity ~ PercentAg + Julian + EnvDetection +
-           PercentLocalVeg_50m + WaterQuality + pH_probe, data = invert.6,
+
+m6 <- lmer(FatteningIndex ~ seconds_since_midnight + Biomass + PlasmaDetection +
+           SPEI + Julian + (1 | Site), data = birds.6)
+
+#---
+
+wetland.7 <- wetland %>% 
+  mutate(across(c(AnnualSnowfall_in, Julian),
+                scale))
+
+m7 <- lm(SPEI ~ AnnualSnowfall_in + Julian, data = wetland.7)
+  
+
+#---
+
+wetland.8 <- wetland %>% 
+  mutate(across(c(AnnualSnowfall_in, Julian, SPEI),
+                scale))
+
+m8 <- glm(Permanence ~ AnnualSnowfall_in + Julian + SPEI, data = wetland.8,
           family = "poisson")
 
 #---
 
-birds.7 <- birds %>% 
-  mutate(across(c(seconds_since_midnight, Biomass, Julian), 
+invert.9 <- invert %>% 
+  mutate(across(c(PercentAg, PercentLocalVeg_50m),
                 scale))
 
-m7 <- lm(FatteningIndex ~ seconds_since_midnight + Biomass +
-           Diversity + Julian, 
-         data = birds.7)
-
-# continue building the rest of the models and then check model diagnostics
+m9 <- lm(WaterQuality ~ PercentLocalVeg_50m + PercentAg, data = invert.9)
 
 #---
 
