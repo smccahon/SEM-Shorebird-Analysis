@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 8/22/2025 #
-#         Modified on 8/28/2025          #
+#         Modified on 8/29/2025          #
 #----------------------------------------#
 
 # load packages
@@ -153,7 +153,7 @@ summary(aov(data = wetland, PercentAg ~ DominantCrop)) # p < 0.001
 wetland.1 <- wetland %>% 
   mutate(across(c(AnnualSnowfall_in, PercentAg, DaysSinceLastPrecipitation_5mm,
                   SPEI), 
-                scale))
+               ~ as.numeric(scale(.))))
 
 m1 <- glm(EnvDetection ~ PercentAg + AnnualSnowfall_in + 
             DaysSinceLastPrecipitation_5mm + Season + Permanence + SPEI, 
@@ -163,7 +163,7 @@ m1 <- glm(EnvDetection ~ PercentAg + AnnualSnowfall_in +
 
 birds.2 <- birds %>% 
   mutate(across(c(seconds_since_midnight, PercentAg, Julian, SPEI), 
-                scale))
+                ~ as.numeric(scale(.))))
 
 m2 <- glmmTMB(PlasmaDetection ~ EnvDetection + seconds_since_midnight + 
                 PercentAg + Julian + SPEI + (1 | Site), family = "binomial", 
@@ -173,7 +173,7 @@ m2 <- glmmTMB(PlasmaDetection ~ EnvDetection + seconds_since_midnight +
 
 invert.3 <- invert %>% 
   mutate(across(c(PercentLocalVeg_50m, PercentAg, Julian), 
-                scale))
+                ~ as.numeric(scale(.))))
 
 m3 <- glm(Biomass ~ PercentAg + Julian + EnvDetection +
            PercentLocalVeg_50m + WaterQuality + Permanence, data = invert.3)
@@ -182,7 +182,7 @@ m3 <- glm(Biomass ~ PercentAg + Julian + EnvDetection +
 
 birds.4 <- birds %>% 
   mutate(across(c(seconds_since_midnight, Biomass, Julian, SPEI), 
-                scale))
+                ~ as.numeric(scale(.))))
 
 m4 <- lmer(BodyCondition ~ seconds_since_midnight + Biomass + Julian + SPEI +
            PlasmaDetection + (1 | Site), 
@@ -192,9 +192,9 @@ m4 <- lmer(BodyCondition ~ seconds_since_midnight + Biomass + Julian + SPEI +
 
 invert.5 <- invert %>% 
   mutate(across(c(PercentAg, Julian, AnnualSnowfall_in), 
-                scale))
+                ~ as.numeric(scale(.))))
 
-m5 <- lm(PercentLocalVeg_50m ~ PercentAg + WaterQuality + Julian + Permanence +
+m5 <- lm(PercentLocalVeg_50m ~ PercentAg + Julian + Permanence +
            AnnualSnowfall_in, 
          data = invert.5)
 
@@ -202,7 +202,7 @@ m5 <- lm(PercentLocalVeg_50m ~ PercentAg + WaterQuality + Julian + Permanence +
 
 birds.6 <- birds %>% 
   mutate(across(c(seconds_since_midnight, Biomass, SPEI, Julian),
-                scale))
+                ~ as.numeric(scale(.))))
 
 
 m6 <- lmer(FatteningIndex ~ seconds_since_midnight + Biomass + PlasmaDetection +
@@ -212,7 +212,7 @@ m6 <- lmer(FatteningIndex ~ seconds_since_midnight + Biomass + PlasmaDetection +
 
 wetland.7 <- wetland %>% 
   mutate(across(c(AnnualSnowfall_in, Julian),
-                scale))
+                ~ as.numeric(scale(.))))
 
 m7 <- lm(SPEI ~ AnnualSnowfall_in + Julian, data = wetland.7)
   
@@ -221,7 +221,7 @@ m7 <- lm(SPEI ~ AnnualSnowfall_in + Julian, data = wetland.7)
 
 wetland.8 <- wetland %>% 
   mutate(across(c(AnnualSnowfall_in, Julian, SPEI),
-                scale))
+                ~ as.numeric(scale(.))))
 
 m8 <- glm(Permanence ~ AnnualSnowfall_in + Julian + SPEI, data = wetland.8,
           family = "poisson")
@@ -230,13 +230,13 @@ m8 <- glm(Permanence ~ AnnualSnowfall_in + Julian + SPEI, data = wetland.8,
 
 invert.9 <- invert %>% 
   mutate(across(c(PercentAg, PercentLocalVeg_50m),
-                scale))
+                ~ as.numeric(scale(.))))
 
 m9 <- lm(WaterQuality ~ PercentLocalVeg_50m + PercentAg, data = invert.9)
 
 #---
 
-model <- psem(m1, m2, m3, m4, m5, m6, m7)
+model <- psem(m1, m2, m3, m4, m5, m6, m7, m8, m9)
 summary(model)
 
 #------------------------------------------------------------------------------#
@@ -245,7 +245,7 @@ summary(model)
 
 # ...environmental detection model (GOOD) ----
 overdispersion <- sum(resid(m1, type = "pearson")^2) / df.residual(m1)
-overdispersion  # 1.06
+overdispersion  # 1.08
 
 DHARM <- simulateResiduals(fittedModel = m1)
 plot(DHARM)
