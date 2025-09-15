@@ -1,0 +1,97 @@
+This document serves as a note page for SEM model building. Variable correlations, errors/issues, and key findings are summarized.
+
+Created by Shelby McCahon: 9/15/2025
+Last Modified: 9/15/2025
+---------
+
+High Continuous Variable Correlations (full dataset):
+
+                        Var1                           Var2 Correlation
+1          Percent_Total_Veg            PercentLocalVeg_50m   0.9646449
+2                     Season                         Julian  -0.9549135
+3                 Permanence                       pH_probe   0.7481301
+4             Max_Flock_Size                   Salinity_ppt   0.8795637
+5      NearestCropDistance_m                        Biomass   0.9822419
+6               WaterQuality                   AnyDetection  -0.6631843
+7                        Fat                  BodyCondition   0.6627521
+8                PecSizeBest                  BodyCondition   0.8437223
+9                       Mass                  BodyCondition  -0.7323275
+10                    Season                           SPEI   0.6962998
+11                Permanence                      Diversity   0.6214106
+12         Percent_Total_Veg      Percent_Exposed_Shoreline  -0.7597111
+13       PercentLocalVeg_50m      Percent_Exposed_Shoreline  -0.6852319
+14                Permanence      Percent_Exposed_Shoreline  -0.6685227
+15                 PercentAg      Percent_Exposed_Shoreline   0.7141780
+16              WaterQuality       InvertPesticideDetection  -0.6350383
+17              AnyDetection       InvertPesticideDetection   0.8210590
+18              WaterQuality                   EnvDetection  -0.6350383
+19              AnyDetection                   EnvDetection   0.8210590
+20  InvertPesticideDetection                   EnvDetection   1.0000000
+21                      Beta                 FatteningIndex   0.7915261
+22                       Tri                 FatteningIndex  -0.7915261
+23                 PercentAg              AnnualSnowfall_in   0.7208131
+24 Percent_Exposed_Shoreline              AnnualSnowfall_in   0.7654956
+25  InvertPesticideDetection      PrecipitationAmount_7days  -0.7167269
+26              EnvDetection      PrecipitationAmount_7days  -0.7167269
+27                    Julian DaysSinceLastPrecipitation_5mm   0.6004650
+28 PrecipitationAmount_7days DaysSinceLastPrecipitation_5mm  -0.7657043
+
+Categorical Correlations (ANOVA results)
+
+1. dominant crop type and % cropland cover
+2. season and wetland permanence
+3. season and % cropland cover
+
+#-------------------------------------------------------------------------#
+
+
+High Continuous Variable Correlations (invert dataset)
+
+                      Var1         Var2 Correlation
+1                   Season       Julian  -0.9704191
+2    NearestCropDistance_m    PercentAg  -0.7248004
+3    NearestCropDistance_m     Buffered   0.7308620
+4                PercentAg     Buffered  -0.7480789
+5                   Season    Diversity  -0.6257737
+6 InvertPesticideDetection EnvDetection   0.8544933
+
+
+1. dominant crop type and % cropland cover
+2. season and wetland permanence
+3. Julian and wetland permanence
+
+#-------------------------------------------------------------------------#
+
+High Continuous Variable Correlations (bird dataset)
+
+
+                        Var1                           Var2 Correlation
+1                     Season                         Julian  -0.9549135
+2      NearestCropDistance_m                        Biomass   0.9822419
+3                        Fat                  BodyCondition  -0.6991725
+4                PecSizeBest                  BodyCondition  -0.8512557
+5                       Mass                  BodyCondition   0.6853448
+6                     Season                           SPEI   0.6962998
+7                 Permanence                      Diversity   0.6214106
+8                 Permanence      Percent_Exposed_Shoreline  -0.6685227
+9                  PercentAg      Percent_Exposed_Shoreline   0.7141780
+10         Percent_Total_Veg      Percent_Exposed_Shoreline  -0.7597111
+11              AnyDetection       InvertPesticideDetection   0.8210590
+12              AnyDetection                   EnvDetection   0.8210590
+13  InvertPesticideDetection                   EnvDetection   1.0000000
+14                      Beta                 FatteningIndex   0.7677503
+15                       Tri                 FatteningIndex  -0.8141603
+16                 PercentAg              AnnualSnowfall_in   0.7208131
+17 Percent_Exposed_Shoreline              AnnualSnowfall_in   0.7654956
+18  InvertPesticideDetection      PrecipitationAmount_7days  -0.7167269
+19              EnvDetection      PrecipitationAmount_7days  -0.7167269
+20                    Julian DaysSinceLastPrecipitation_5mm   0.6004650
+21 PrecipitationAmount_7days DaysSinceLastPrecipitation_5mm  -0.7657043
+
+
+1. dominant crop type and % cropland cover
+2. season and wetland permanence
+3. season and % cropland cover
+
+
+

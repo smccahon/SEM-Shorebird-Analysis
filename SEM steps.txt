@@ -1,9 +1,0 @@
-8/29/2025
----------
-
-Important notes and outcomes in SEM:
-
-**you may want to do a multi-analysis and separate season
-
-
-1. Many variables were correlated (season and % cropland cover, season and wetland permanence, % cropland cover and annual snowfall). From the drawn path diagram, I could not assess the effect of season or annual snowfall on environmental detection. 
