@@ -1,7 +1,8 @@
 .Rproj.user/
-Resources/
+resources/
 original_data/
 cleaned_data/
+notes/
 /plots
 .Rhistory
 *.docx

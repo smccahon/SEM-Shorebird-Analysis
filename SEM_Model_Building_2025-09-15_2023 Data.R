@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 9/15/2025          #
+#         Modified on 9/16/2025          #
 #----------------------------------------#
 
 # load packages
@@ -13,6 +13,7 @@ library(glmmTMB)
 library(multcompView)
 library(DHARMa)
 library(car)
+library(statmod)
 
 # load data
 birds <- read.csv("cleaned_data/shorebird_data_cleaned_2025-08-11.csv")
@@ -163,30 +164,52 @@ full <- full %>%
 
 invert$log_PercentAg <- log(invert$PercentAg)
 
-invert.cs <- invert %>% 
-  mutate(across(c(log_PercentAg, Julian), 
-                ~ as.numeric(scale(.))))
+# transforming 0's to small numbers to allow the use of a Gamma distribution
+invert$Biomass_adj <- ifelse(invert$Biomass == 0, 0.0001, 
+                             invert$Biomass)
 
-m1 <- glmmTMB(Biomass ~ log_PercentAg + Julian, 
-              data = invert.cs, 
-              family = tweedie(link = "log"))
+birds$Biomass_adj <- ifelse(birds$Biomass == 0, 0.0001, 
+                            birds$Biomass)
+
+m1 <- glm(Biomass_adj ~ PercentAg,
+              family = Gamma(link = "log"), data = invert)
+
+m2 <- lm(BodyCondition ~ Biomass_adj, data = birds)
+
+
+# psem expects a random effect in glmmTMB so I created a dummy random effect
+invert$dummy <- 1
+
+# tweedie model (psem does not support)
+  # m1 <- glmmTMB(Biomass ~ log_PercentAg + Julian + (1 | dummy), 
+  #               data = invert, 
+  #               family = glmmTMB::tweedie(link = "log"))
+  
+
+
+# zero-inflated Gamma model (psem does not support)
+ # m1 <- glmmTMB(Biomass ~ log_PercentAg + Julian + (1 | dummy),
+ #                 ziformula = ~ log_PercentAg + Julian + (1 | dummy),
+ #                 family = ziGamma(link = "log"),
+ #                 data = invert)
+
+
+# plasma detection model
+m1 <- lm(BodyCondition ~ PlasmaDetection, data = birds)
+
+m2 <- glmmTMB(PlasmaDetection ~ PercentAg + Biomass + (1|Site), data = birds, 
+              family = binomial(link = "logit"))
 
 
 # body condition model
-
-birds.cs <- birds %>% 
-  mutate(across(c(Biomass), 
-                ~ as.numeric(scale(.))))
-
-m2 <- glmmTMB(BodyCondition ~ Species + Biomass,
-              family = gaussian(),
-              data = birds.cs)
-## ISSUES???
+m3 <- glmmTMB(BodyCondition ~ PlasmaDetection + (1|Site),
+              data = birds)
 
 
-model <- psem(m1, m2)
+# gamma model runs...but need to calculate standardized estimates manually
+model <- psem(m1, m2, m3)
 print(model)
-summary(model)
+summary(model, conserve = TRUE)
 
 #------------------------------------------------------------------------------#
 #                     model diagnostics with DHARMa                         ----                        
@@ -202,8 +225,8 @@ testUniformity(simulationOutput) # good,
 testOutliers(simulationOutput) # good
 testQuantiles(simulationOutput) # good, but step failure warning
 
-plotResiduals(simulationOutput, form = invert$Season) # good
-plotResiduals(simulationOutput, form = invert$PercentAg) # mostly good
+plotResiduals(simulationOutput, form = invert$Julian) # issue
+plotResiduals(simulationOutput, form = invert$PercentAg) #  good
 
 # m2 --- 
 simulationOutput <- simulateResiduals(fittedModel = m2) 
