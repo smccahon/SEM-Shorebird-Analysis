@@ -33,54 +33,104 @@ birds$formatted_time <- format(as.POSIXct(birds$seconds_since_midnight,
                                           origin = "1970-01-01", tz = "UTC"), 
                                "%H:%M")
 
-### ...create body condition index with PCA ------------------------------------
+### ...create body condition index (accounting for structural size ) -----------
 
-# subset the dataset to only include relevant variables
-birds_subset <- birds[, c("Fat", "Mass", "PecSizeBest")]
+# 1. Define variable groups
+size_vars <- c("Wing", "DiagTarsus", "Culmen")
+condition_vars <- c("Mass", "Fat", "PecSizeBest")
+all_vars <- c(size_vars, condition_vars)
 
-# remove rows with NAs
-birds_subset_clean <- birds_subset[complete.cases(birds_subset), ] # n = 152
-cor(birds_subset_clean) # ranges from -0.13 to 0.36
+# 2. Subset to complete cases only
+birds_cc <- birds[complete.cases(birds[, all_vars]), ]
 
-# Run PCA on the cleaned data
-pca_result <- prcomp(birds_subset_clean, center = TRUE, scale. = TRUE)
+# 3. Create size index from PCA on structural size traits
+size_pca <- prcomp(birds_cc[, size_vars], scale. = TRUE)
+birds_cc$SizeIndex <- size_pca$x[, 1]  # PC1 = size axis
 
-# 52% explained by PC1, 29% explained by PC2, 19% explained by PC3
-summary(pca_result)
+# 4. Regress each condition-related variable on size, extract residuals
+birds_cc$resid_mass <- residuals(lm(Mass ~ SizeIndex + Species, data = birds_cc))
+birds_cc$resid_fat <- residuals(lm(Fat ~ SizeIndex + Species, data = birds_cc))
+birds_cc$resid_pec <- residuals(lm(PecSizeBest ~ SizeIndex + Species, data = birds_cc))
 
-# View the PCA scores (principal components)
-pca_scores <- pca_result$x
+# 5. PCA on the residuals — gives size-corrected condition index
+condition_pca <- prcomp(birds_cc[, c("resid_mass", "resid_fat", "resid_pec")], scale. = TRUE)
 
-# Merge PCA scores back to the original dataset
-# Create a data frame to store the PCA scores for the rows with no missing data
-birds$BodyCondition <- NA  # Initialize with NA values
+# 6. Extract PC1 as BodyCondition (higher = better condition)
+birds_cc$BodyCondition <- condition_pca$x[, 1]
 
-# Add the principal component scores for the rows without NA values
-birds[complete.cases(birds_subset), "BodyCondition"] <- pca_scores[, 1]
+# 7. Add BodyCondition back to full birds dataset (set NA where missing)
+birds$BodyCondition <- NA
+birds[rownames(birds_cc), "BodyCondition"] <- birds_cc$BodyCondition
+
+print(condition_pca$rotation)
+summary(condition_pca)
+plot(condition_pca)
+
+
+# ### ...create body condition index (NOT accounting for structural size)
+# # subset the dataset to only include relevant variables
+# birds_subset <- birds[, c("Fat", "Mass", "PecSizeBest")]
+# 
+# # remove rows with NAs
+# birds_subset_clean <- birds_subset[complete.cases(birds_subset), ] # n = 152
+# cor(birds_subset_clean) # ranges from -0.13 to 0.36
+# 
+# # Run PCA on the cleaned data
+# pca_result <- prcomp(birds_subset_clean, center = TRUE, scale. = TRUE)
+# 
+# # 52% explained by PC1, 29% explained by PC2, 19% explained by PC3
+# summary(pca_result)
+# 
+# # View the PCA scores (principal components)
+# pca_scores <- pca_result$x
+# 
+# # Merge PCA scores back to the original dataset
+# # Create a data frame to store the PCA scores for the rows with no missing data
+# birds$BodyCondition <- NA  # Initialize with NA values
+# 
+# # Add the principal component scores for the rows without NA values
+# birds[complete.cases(birds_subset), "BodyCondition"] <- pca_scores[, 1]
 
 ### ...create fattening index with PCA -----------------------------------------
-# subset the dataset to only include relevant variables
+
+# 1. Subset the dataset to only include relevant variables
 birds_subset <- birds[, c("Beta", "Tri")]
 
-# remove rows with NAs
-birds_subset_clean <- birds_subset[complete.cases(birds_subset), ] # n = 89
-cor(birds_subset_clean) # -0.23
+# 2. Remove rows with NAs
+birds_subset_clean <- birds_subset[complete.cases(birds_subset), ]  # n = 89
 
-# Run PCA on the cleaned data
+# 3. Check correlation (optional)
+correlation <- cor(birds_subset_clean)
+print(correlation)  # -0.23
+
+# 4. Run PCA on the cleaned data (centered and scaled)
 pca_result <- prcomp(birds_subset_clean, center = TRUE, scale. = TRUE)
 
-# 61% explained by PC1, 39% explained by PC2
-summary(pca_result)
+# 5. Check PCA summary (optional)
+print(summary(pca_result))
 
-# View the PCA scores (principal components)
+# 6. Extract PCA scores (principal components)
 pca_scores <- pca_result$x
 
-# Merge PCA scores back to the original dataset
-# Create a data frame to store the PCA scores for the rows with no missing data
-birds$FatteningIndex <- NA  # Initialize with NA values
+# 7. Flip the sign of PC1 so higher scores indicate fattening
+pca_scores[, 1] <- -pca_scores[, 1]
 
-# Add the principal component scores for the rows without NA values
+# 8. Initialize FatteningIndex column with NA in original dataset
+birds$FatteningIndex <- NA
+
+# 9. Add the flipped PC1 scores for rows without missing Beta or Tri
 birds[complete.cases(birds_subset), "FatteningIndex"] <- pca_scores[, 1]
+
+# 10. View PCA rotation/loadings (optional)
+print(pca_result$rotation)
+
+
+ggplot(birds_subset_clean, aes(x = Beta, y = Tri)) +
+  geom_point(aes(color = pca_scores[, 1])) +
+  scale_color_gradient2(midpoint = 0, low = "blue", mid = "white", high = "red") +
+  labs(color = "FatteningIndex", title = "PCA-based Fattening Index") +
+  theme_minimal()
+
 
 ### ...trim down data and export file for analysis -----------------------------
 birds_cleaned <- birds %>% 

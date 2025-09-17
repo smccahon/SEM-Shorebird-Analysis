@@ -1,7 +1,7 @@
 #----------------------------------------#
 #        Original Code Documentation     #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 9/15/2025          #
+#         Modified on 9/17/2025          #
 #----------------------------------------#
 
 #------------------------------------------------------------------------------#
@@ -137,7 +137,7 @@ summary(model)
 
 # model diagnostics
 
-# ...environmental detection model (ISSUES) ----
+# ...environmental detection model (ISSUES)
 DHARM <- simulateResiduals(fittedModel = m1)
 plot(DHARM)
 plotResiduals(DHARM, full$DaysSinceLastPrecipitation_5mm)
@@ -146,7 +146,7 @@ testOutliers(DHARM) # 0 outliers
 testUniformity(DHARM) # no evidence of non-uniformity of residuals
 testZeroInflation(DHARM) # no evidence of zero-inflation
 
-# ...plasma detection model (GOOD) ----
+# ...plasma detection model (GOOD) 
 DHARM <- simulateResiduals(fittedModel = m3)
 plot(DHARM)
 testDispersion(DHARM) # overdispersion: 1.00
@@ -155,11 +155,11 @@ testUniformity(DHARM) # no evidence of non-uniformity of residuals
 testZeroInflation(DHARM) # no evidence of zero-inflation
 
 
-# ...biomass model (GOOD) ----
+# ...biomass model (GOOD) 
 plot(residuals(m3), main = "Deviance Residuals", ylab = "Residuals", 
      xlab = "Index") # no clear pattern
 
-#...body condition model ----
+#...body condition model 
 DHARM <- simulateResiduals(fittedModel = m4)
 plot(DHARM) # combined adjusted quantile test significant
 plotResiduals(DHARM, form = birds.4$Julian)
@@ -167,3 +167,46 @@ testDispersion(DHARM) # overdispersion: 1.00
 testOutliers(DHARM) # 0 outliers
 testUniformity(DHARM) # no evidence of non-uniformity of residuals
 testZeroInflation(DHARM) # no evidence of zero-inflation
+
+
+
+
+
+
+
+#------------------------------------------------------------------------------#
+
+#-------------------------------------------------------------------------------#
+#                 initial biomass models for sem (9/17/2025)                ----
+#------------------------------------------------------------------------------#
+
+# transforming 0's to small numbers to allow the use of a Gamma distribution
+invert$Biomass_adj <- ifelse(invert$Biomass == 0, 0.0001, 
+                              invert$Biomass)
+ 
+birds$Biomass_adj <- ifelse(birds$Biomass == 0, 0.0001, 
+                             birds$Biomass)
+ 
+m1 <- glm(Biomass_adj ~ PercentAg,
+               family = Gamma(link = "log"), data = invert)
+ 
+m2 <- lm(BodyCondition ~ Biomass_adj, data = birds)
+
+# psem expects a random effect in glmmTMB so I created a dummy random effect
+invert$dummy <- 1
+
+# tweedie model (psem does not support)
+invert$log_PercentAg <- log(invert$PercentAg)
+m1 <- glmmTMB(Biomass ~ log_PercentAg + Julian + (1 | dummy), 
+               data = invert, 
+               family = glmmTMB::tweedie(link = "log"))
+
+# zero-inflated Gamma model (psem does not support)
+m1 <- glmmTMB(Biomass ~ log_PercentAg + Julian + (1 | dummy),
+                 ziformula = ~ log_PercentAg + Julian + (1 | dummy),
+                 family = ziGamma(link = "log"),
+                 data = invert)
+
+
+
+
