@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 9/17/2025          #
+#         Modified on 9/18/2025          #
 #----------------------------------------#
 
 # load packages
@@ -19,7 +19,6 @@ library(AICcmodavg)
 birds <- read.csv("cleaned_data/shorebird_data_cleaned_2025-08-11.csv")
 invert <- read.csv("cleaned_data/invert_data_cleaned_2025-08-11.csv")
 wetland <- read.csv("original_data/neonic_wetland_survey_data_2025-08-12.csv")
-full <- read.csv("cleaned_data/full_data_cleaned_2025-08-29.csv")
 
 # combine species into bill length groupings
 birds <- birds %>%
@@ -39,9 +38,6 @@ birds <- birds %>%
 
 wetland <- wetland %>% 
   filter(Year == "2023") # 79 wetland surveys surveys
-
-# fix numeric instability issue
-birds$time_hours <- birds$seconds_since_midnight / 3600 
 
 #------------------------------------------------------------------------------#
 #                        convert factors to numeric                         ----                        
@@ -131,31 +127,6 @@ wetland <- wetland %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
-full <- full %>% 
-  mutate(PlasmaDetection = case_when(
-    PlasmaDetection == "Y" ~ 1,
-    PlasmaDetection == "N" ~ 0,
-    TRUE ~ NA_real_),
-    InvertPesticideDetection = case_when(
-      InvertPesticideDetection == "Y" ~ 1,
-      InvertPesticideDetection == "N" ~ 0,
-      TRUE ~ NA_real_), 
-    AnyDetection = case_when(
-      AnyDetection == "Y" ~ 1,
-      AnyDetection == "N" ~ 0,
-      TRUE ~ NA_real_),
-    EnvDetection = case_when(
-      EnvDetection == "Y" ~ 1,
-      EnvDetection == "N" ~ 0,
-      TRUE ~ NA_real_),
-    Season = case_when(
-      Season == "Spring" ~ 1,
-      Season == "Fall" ~ 0),
-    Permanence = case_when(
-      Permanence %in% c("Temporary", "Seasonal") ~ 1,
-      Permanence == "Semipermanent" ~ 2,
-      Permanence == "Permanent" ~ 3,
-      TRUE ~ NA_real_))
 
 #------------------------------------------------------------------------------#
 #              fit individual models (structural equations)                 ----                        
@@ -170,6 +141,10 @@ invert.pos <- subset(invert, Biomass > 0)
 
 m1 <- glm(Biomass ~ PercentAg + EnvDetection + WaterQuality + 
             PercentLocalVeg_50m + Season, data = invert.pos,
+          na.action = na.omit,
+          family = Gamma(link = "log"))
+
+m1 <- glm(Biomass ~ PercentAg , data = invert.pos,
           na.action = na.omit,
           family = Gamma(link = "log"))
 
@@ -193,12 +168,12 @@ m2 <- glm(PlasmaDetection ~ PercentAg + EnvDetection,
 
 # saturated (without Species/Group)
 
-m3 <- lm(FatteningIndex ~ Biomass + PercentAg + SPEI + PlasmaDetection +
+m3 <- lm(SMI ~ Biomass + PercentAg + SPEI + PlasmaDetection +
            time_hours + Species,
          data = birds,
          na.action = na.omit)
 
-m3 <- lm(FatteningIndex ~ Group,
+m3 <- lm(SMI ~ Biomass + Group,
          data = birds,
          na.action = na.omit)
 
@@ -210,7 +185,7 @@ m3 <- lm(FatteningIndex ~ Group,
 # aictab(models, modnames = model_names)
 
 
-model <- psem(m1, m2, m3)
+model <- psem(m1, m3)
 print(model)
 summary(model, conserve = TRUE)
 
@@ -251,7 +226,7 @@ testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
 testQuantiles(simulationOutput) 
 
-birds_complete <- na.omit(birds[, c("Mass", "Season", "Group", 
+birds_complete <- na.omit(birds[, c("FatteningIndex", "Season", "Group", 
                                     "PercentAg", "Species")])
 
 plotResiduals(simulationOutput, form = birds_complete$Group)

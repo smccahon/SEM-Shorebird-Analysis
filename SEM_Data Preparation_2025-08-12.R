@@ -1,11 +1,14 @@
 #----------------------------------------#
 #          SEM Data Preparation          #
 # Created by Shelby McCahon on 8/01/2025 #
-#         Modified on 8/29/2025          #
+#         Modified on 9/18/2025          #
 #----------------------------------------#
 
 # load packages
 library(tidyverse)
+library(purrr)
+library(lme4)
+
 
 # load data
 birds <- read.csv("original_data/shorebird_body_condition_data_2025-05-29.csv")
@@ -33,65 +36,71 @@ birds$formatted_time <- format(as.POSIXct(birds$seconds_since_midnight,
                                           origin = "1970-01-01", tz = "UTC"), 
                                "%H:%M")
 
+# fix numeric instability issue in SEM modeling
+birds$time_hours <- birds$seconds_since_midnight / 3600 
+
+
 ### ...create body condition index (accounting for structural size ) -----------
 
-# 1. Define variable groups
-size_vars <- c("Wing", "DiagTarsus", "Culmen")
-condition_vars <- c("Mass", "Fat", "PecSizeBest")
-all_vars <- c(size_vars, condition_vars)
+# Option 1. Regression of mass and wing chord
 
-# 2. Subset to complete cases only
-birds_cc <- birds[complete.cases(birds[, all_vars]), ]
+# 1. Fit model
+birds.complete <- na.omit(birds[, c("Mass", "Species", "Wing", "Julian",
+                                    "Event")])
 
-# 3. Create size index from PCA on structural size traits
-size_pca <- prcomp(birds_cc[, size_vars], scale. = TRUE)
-birds_cc$SizeIndex <- size_pca$x[, 1]  # PC1 = size axis
+birds.complete$Species <- as.factor(birds.complete$Species)
 
-# 4. Regress each condition-related variable on size, extract residuals
-birds_cc$resid_mass <- residuals(lm(Mass ~ SizeIndex + Species, data = birds_cc))
-birds_cc$resid_fat <- residuals(lm(Fat ~ SizeIndex + Species, data = birds_cc))
-birds_cc$resid_pec <- residuals(lm(PecSizeBest ~ SizeIndex + Species, data = birds_cc))
+m1 <- lmer(Mass ~ as.factor(Species) + Wing + Julian + (1|Event), data = birds.complete,
+           na.action = na.omit)
 
-# 5. PCA on the residuals — gives size-corrected condition index
-condition_pca <- prcomp(birds_cc[, c("resid_mass", "resid_fat", "resid_pec")], scale. = TRUE)
+m1 <- lm(Mass ~ Wing, data = birds)
 
-# 6. Extract PC1 as BodyCondition (higher = better condition)
-birds_cc$BodyCondition <- condition_pca$x[, 1]
+# 2. Create a new residual column with NAs
+birds$residual <- NA
 
-# 7. Add BodyCondition back to full birds dataset (set NA where missing)
-birds$BodyCondition <- NA
-birds[rownames(birds_cc), "BodyCondition"] <- birds_cc$BodyCondition
+# 3. Get the rows that were used in the model
+used_rows <- as.numeric(rownames(model.frame(m)))
 
-print(condition_pca$rotation)
-summary(condition_pca)
-plot(condition_pca)
+# 4. Assign residuals only to those rows
+birds$residual[used_rows] <- residuals(m)
+
+simulationOutput <- simulateResiduals(fittedModel = m1) 
+plot(simulationOutput)
+testDispersion(m1) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) 
+
+plotResiduals(simulationOutput, form = birds.complete$Wing)
 
 
-# ### ...create body condition index (NOT accounting for structural size)
-# # subset the dataset to only include relevant variables
-# birds_subset <- birds[, c("Fat", "Mass", "PecSizeBest")]
-# 
-# # remove rows with NAs
-# birds_subset_clean <- birds_subset[complete.cases(birds_subset), ] # n = 152
-# cor(birds_subset_clean) # ranges from -0.13 to 0.36
-# 
-# # Run PCA on the cleaned data
-# pca_result <- prcomp(birds_subset_clean, center = TRUE, scale. = TRUE)
-# 
-# # 52% explained by PC1, 29% explained by PC2, 19% explained by PC3
-# summary(pca_result)
-# 
-# # View the PCA scores (principal components)
-# pca_scores <- pca_result$x
-# 
-# # Merge PCA scores back to the original dataset
-# # Create a data frame to store the PCA scores for the rows with no missing data
-# birds$BodyCondition <- NA  # Initialize with NA values
-# 
-# # Add the principal component scores for the rows without NA values
-# birds[complete.cases(birds_subset), "BodyCondition"] <- pca_scores[, 1]
+# Option 2: Scaled Mass Index
+
+# 1. Calculate log-transformed variables
+birds$logMass <- log(birds$Mass)
+birds$logWing <- log(birds$Wing)
+
+# 2. Fit regression to get scaling exponent 'b'
+model <- lm(logMass ~ logWing, data = birds)
+b <- coef(model)["logWing"]
+
+# 3. Calculate mean reference size L0
+L0 <- mean(birds$Wing, na.rm = TRUE)
+
+# 4. Calculate Scaled Mass Index
+birds$SMI <- birds$Mass * (L0 / birds$Wing)^b
+
+plot(birds$Wing, birds$Mass, main = "Mass vs Wing Length")
+points(birds$Wing, birds$SMI, col = "red", pch = 19)
+legend("topleft", legend = c("Original Mass", "SMI"), col = c("black", "red"), pch = c(1,19))
+
+m1 <- lm(SMI ~ Species, data = birds)
+
+# Option 3 to explore later: relative fuel load
+
 
 ### ...create fattening index with PCA -----------------------------------------
+# high tri and low beta for high fattening
 
 # 1. Subset the dataset to only include relevant variables
 birds_subset <- birds[, c("Beta", "Tri")]
@@ -106,7 +115,7 @@ print(correlation)  # -0.23
 # 4. Run PCA on the cleaned data (centered and scaled)
 pca_result <- prcomp(birds_subset_clean, center = TRUE, scale. = TRUE)
 
-# 5. Check PCA summary (optional)
+# 5. Check PCA summary
 print(summary(pca_result))
 
 # 6. Extract PCA scores (principal components)
@@ -121,27 +130,26 @@ birds$FatteningIndex <- NA
 # 9. Add the flipped PC1 scores for rows without missing Beta or Tri
 birds[complete.cases(birds_subset), "FatteningIndex"] <- pca_scores[, 1]
 
-# 10. View PCA rotation/loadings (optional)
+# 10. View PCA rotation/loadings
 print(pca_result$rotation)
 
+tri_cor <- cor(pca_scores[, 1], birds_subset_clean$Tri)
+beta_cor <- cor(pca_scores[, 1], birds_subset_clean$Beta)
 
-ggplot(birds_subset_clean, aes(x = Beta, y = Tri)) +
-  geom_point(aes(color = pca_scores[, 1])) +
-  scale_color_gradient2(midpoint = 0, low = "blue", mid = "white", high = "red") +
-  labs(color = "FatteningIndex", title = "PCA-based Fattening Index") +
-  theme_minimal()
+cat("Correlation with Tri:", round(tri_cor, 3), "\n")   # Should be positive
+cat("Correlation with Beta:", round(beta_cor, 3), "\n") # Should be negative
 
 
 ### ...trim down data and export file for analysis -----------------------------
 birds_cleaned <- birds %>% 
   select(Individual, Site, Event, Season, Age, Fat, PecSizeBest, Beta, Permanence, 
          NearestCropDistance_m, Max_Flock_Size,
-         PlasmaDetection, seconds_since_midnight, Species, PercentAg, 
+         PlasmaDetection, seconds_since_midnight, Species, PercentAg, SMI,
          Percent_Total_Veg, Julian, Mass, OverallNeonic,
          Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
-         AnyDetection, BodyCondition, MigStatus, AgCategory, SPEI, Sex, Tri, 
+         AnyDetection, MigStatus, AgCategory, SPEI, Sex, Tri, 
          Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
-         InvertPesticideDetection, EnvDetection, FatteningIndex,
+         InvertPesticideDetection, EnvDetection, FatteningIndex, time_hours,
          AnnualSnowfall_in, PrecipitationAmount_7days, DaysSinceLastPrecipitation_5mm)
 
 write.csv(birds_cleaned, "cleaned_data/shorebird_data_cleaned_2025-08-11.csv",
@@ -190,123 +198,6 @@ invert_cleaned <- invert %>%
          AnnualSnowfall_in, EnvDetection)
 
 write.csv(invert_cleaned, "cleaned_data/invert_data_cleaned_2025-08-11.csv",
-          row.names = FALSE)
-
-
-#------------------------------------------------------------------------------#
-#                         Full Dataset Preparation                          ----                        
-#------------------------------------------------------------------------------#   
-
-### ...standardize time to something more simple -------------------------------
-full$Time <- strptime(full$Time, format = "%H:%M")
-full$Time <- as.POSIXct(full$Time, tz = "America/Chicago")
-attributes(full$Time)$tzone
-
-# Calculate seconds since midnight
-full$seconds_since_midnight <- as.numeric(difftime(full$Time, 
-                                                    floor_date(full$Time, "day"), 
-                                                    units = "secs"))
-
-full$sin <- sin(2 * pi * full$seconds_since_midnight / (24 * 3600))
-full$cos <- cos(2 * pi * full$seconds_since_midnight / (24 * 3600))
-
-full$formatted_time <- format(as.POSIXct(full$seconds_since_midnight, 
-                                          origin = "1970-01-01", tz = "UTC"), 
-                               "%H:%M")
-
-### ...create body condition index with PCA ------------------------------------
-
-# subset the dataset to only include relevant variables
-full_subset <- full[, c("Fat", "Mass", "PecSizeBest")]
-
-# remove rows with NAs
-full_subset_clean <- full_subset[complete.cases(full_subset), ] # n = 123
-cor(full_subset_clean) # ranges from -0.45 to 0.38
-
-# Run PCA on the cleaned data
-pca_result <- prcomp(full_subset_clean, center = TRUE, scale. = TRUE)
-
-# 56% explained by PC1, 27% explained by PC2, 17% explained by PC3
-summary(pca_result)
-
-# View the PCA scores (principal components)
-pca_scores <- pca_result$x
-
-# Merge PCA scores back to the original dataset
-# Create a data frame to store the PCA scores for the rows with no missing data
-full$BodyCondition <- NA  # Initialize with NA values
-
-# Add the principal component scores for the rows without NA values
-full[complete.cases(full_subset), "BodyCondition"] <- pca_scores[, 1]
-
-### ...create fattening index with PCA -----------------------------------------
-
-# subset the dataset to only include relevant variables
-full_subset <- full[, c("Beta", "Tri")]
-
-# remove rows with NAs
-full_subset_clean <- full_subset[complete.cases(full_subset), ] # n = 89
-cor(full_subset_clean) # -0.25
-
-# Run PCA on the cleaned data
-pca_result <- prcomp(full_subset_clean, center = TRUE, scale. = TRUE)
-
-# 63% explained by PC1, 37% explained by PC2
-summary(pca_result)
-
-# View the PCA scores (principal components)
-pca_scores <- pca_result$x
-
-# Merge PCA scores back to the original dataset
-# Create a data frame to store the PCA scores for the rows with no missing data
-full$FatteningIndex <- NA  # Initialize with NA values
-
-# Add the principal component scores for the rows without NA values
-full[complete.cases(full_subset), "FatteningIndex"] <- pca_scores[, 1]
-
-### ...create water quality index with PCA -------------------------------------
-
-# subset the dataset to only include relevant variables
-# salinity and pH did not contribute anything meaningful and should prob.
-# be treated separately
-full_subset <- full[, c("Conductivity_uS.cm", "TDS_mg.L")]
-
-# remove rows with NAs
-full_subset_clean <- full_subset[complete.cases(full_subset), ] # n = 126
-cor(full_subset_clean) # 0.84
-
-# Run PCA on the cleaned data
-pca_result <- prcomp(full_subset_clean, center = TRUE, scale. = TRUE)
-
-# 92% explained by PC1
-summary(pca_result)
-
-# View the PCA scores (principal components)
-pca_scores <- pca_result$x
-
-# Merge PCA scores back to the original dataset
-# Create a data frame to store the PCA scores for the rows with no missing data
-full$WaterQuality <- NA  # Initialize with NA values
-
-# Add the principal component scores for the rows without NA values
-full[complete.cases(full_subset), "WaterQuality"] <- pca_scores[, 1]
-
-### ...trim down data and export file for analysis -----------------------------
-full_cleaned <- full %>% 
-  select(Individual, Site, Percent_Total_Veg, 
-         PercentLocalVeg_50m, Season, Time,
-         Age, Fat, PecSizeBest, Beta, Permanence, 
-         NearestCropDistance_m, Max_Flock_Size,
-         PlasmaDetection, seconds_since_midnight, Species, PercentAg, 
-         Julian, Mass, OverallNeonic, WaterQuality, pH_probe, Salinity_ppt,
-         Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
-         AnyDetection, BodyCondition, MigStatus, AgCategory, SPEI, Sex, Tri, 
-         Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
-         InvertPesticideDetection, EnvDetection, FatteningIndex,
-         AnnualSnowfall_in, PrecipitationAmount_7days, 
-         DaysSinceLastPrecipitation_5mm)
-
-write.csv(full_cleaned, "cleaned_data/full_data_cleaned_2025-08-29.csv",
           row.names = FALSE)
 
 
