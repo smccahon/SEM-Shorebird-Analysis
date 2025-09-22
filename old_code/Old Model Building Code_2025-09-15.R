@@ -219,8 +219,17 @@ m1 <- glmmTMB(Biomass ~ log_PercentAg + Julian + (1 | dummy),
  write.csv(full_cleaned, "cleaned_data/full_data_cleaned_2025-08-29.csv",
            row.names = FALSE)
  
+ ### ...extract standardized coefficients manually (long code)-----------------------------
  
- 
+ m2 <- glm(Biomass ~ PercentAg, data = invert.pos, family = Gamma(link = "log"))
+ beta <- coef(m2)["PercentAg"] # get raw unstandardized coefficient
+ phi <- summary(m2)$dispersion # extract dispersion parameter
+ v <- 1/phi # calculate shape parameter
+ sigma2_E <- trigamma(v) # distribution-specific error variance
+ sd_x <- sd(invert.pos$PercentAg) # calculate SD of predictor
+ sd_y <- sqrt(sigma2_E + var(predict(m2, type = "link"))) # calculate SD of response on link scale
+ beta_std <- beta * (sd_x / sd_y) # compute standardized coefficient
+ beta_std
  
  
  

@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 9/18/2025          #
+#         Modified on 9/22/2025          #
 #----------------------------------------#
 
 # load packages
@@ -14,6 +14,8 @@ library(multcompView)
 library(DHARMa)
 library(car)
 library(AICcmodavg)
+library(cplm)
+library(statmod)
 
 # load data
 birds <- read.csv("cleaned_data/shorebird_data_cleaned_2025-08-11.csv")
@@ -134,48 +136,54 @@ wetland <- wetland %>%
 
 # ...biomass model ----
 
-# model wetlands with biomass > 0 only (n = 66)
+# model wetlands with biomass > 0 only, given tweedie is not supported (n = 66)
 invert.pos <- subset(invert, Biomass > 0)
 
-# saturated
-
+# saturated model
 m1 <- glm(Biomass ~ PercentAg + EnvDetection + WaterQuality + 
             PercentLocalVeg_50m + Season, data = invert.pos,
           na.action = na.omit,
           family = Gamma(link = "log"))
 
-m1 <- glm(Biomass ~ PercentAg , data = invert.pos,
-          na.action = na.omit,
-          family = Gamma(link = "log"))
+# reduced model
+# m1 <- glm(Biomass ~ PercentAg , data = invert.pos,
+#           na.action = na.omit,
+#           family = Gamma(link = "log"))
+
+# extract standardized coefficients manually
+beta <- coef(m1)["PercentAg"]
+sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
+               trigamma(1 / summary(m1)$dispersion)) # observation-level variance
+sd_x <- sd(invert.pos$PercentAg)
+beta_std <- beta * (sd_x / sd_y)
+beta_std
 
 #---
 
 # ...plasma detection model----
 
-var <- c("PlasmaDetection", "PercentAg", "EnvDetection", "Season")
-
-# 2. Subset data to complete cases for those vars
-birds_complete <- birds[complete.cases(birds[, var]), ]
+# var <- c("PlasmaDetection", "PercentAg", "EnvDetection", "Season")
+# 
+# Subset data to complete cases for those vars
+# birds_complete <- birds[complete.cases(birds[, var]), ]
 
 # saturated
 m2 <- glm(PlasmaDetection ~ PercentAg + EnvDetection,
-            data = birds_complete,
+            data = birds,
             family = binomial(link = "logit"))
 
 #---
 
 # body condition model
 
-# saturated (without Species/Group)
-
+# saturate
 m3 <- lm(SMI ~ Biomass + PercentAg + SPEI + PlasmaDetection +
-           time_hours + Species,
+           time_hours + Julian + EnvDetection,
          data = birds,
          na.action = na.omit)
 
-m3 <- lm(SMI ~ Biomass + Group,
-         data = birds,
-         na.action = na.omit)
+ggplot(birds, aes(x = Biomass, y = SMI)) + geom_point()
+
 
 
 # model_names <- paste0("m", 3:4)
@@ -185,10 +193,9 @@ m3 <- lm(SMI ~ Biomass + Group,
 # aictab(models, modnames = model_names)
 
 
-model <- psem(m1, m3)
+model <- psem(m1, m2, m3)
 print(model)
 summary(model, conserve = TRUE)
-
 
 
 #------------------------------------------------------------------------------#
@@ -196,7 +203,7 @@ summary(model, conserve = TRUE)
 #------------------------------------------------------------------------------# 
 
 
-# m1 --- GOOD, % ag not perfect within saturated model though
+# m1 --- GOOD
 simulationOutput <- simulateResiduals(fittedModel = m1) 
 plot(simulationOutput)
 testDispersion(m1) 
@@ -206,7 +213,7 @@ testOutliers(simulationOutput)
 testQuantiles(simulationOutput)
 
 plotResiduals(simulationOutput, form = invert.pos$Season)
-plotResiduals(simulationOutput, form = invert.pos$PercentAg)
+plotResiduals(simulationOutput, form = invert.pos$PercentAg) # not perfect, but okay
 
 # m2 --- not good
 simulationOutput <- simulateResiduals(fittedModel = m2) 
@@ -231,57 +238,6 @@ birds_complete <- na.omit(birds[, c("FatteningIndex", "Season", "Group",
 
 plotResiduals(simulationOutput, form = birds_complete$Group)
 
-#------------------------------------------------------------------------------#
-#             manually calculate standardized coefficients                  ----                        
-#------------------------------------------------------------------------------# 
-
-# --- 1. Biomass ~ PercentAg + Season (Gamma GLM with log link) ---
-m1 <- glm(Biomass ~ PercentAg + Season, data = invert.pos,
-          family = Gamma(link = "log"))
-
-coef_est1 <- coef(summary(m1))[, "Estimate"]
-sd_PercentAg_1 <- sd(invert.pos$PercentAg, na.rm = TRUE)
-sd_Season_1 <- sd(invert.pos$Season, na.rm = TRUE)
-
-eta1 <- predict(m1, type = "link")
-sd_eta1 <- sd(eta1)
-
-std_beta_PercentAg_1 <- coef_est1["PercentAg"] * sd_PercentAg_1 / sd_eta1
-std_beta_Season_1 <- coef_est1["Season"] * sd_Season_1 / sd_eta1
-
-# --- 2. PlasmaDetection ~ PercentAg + Biomass (Binomial GLMM, logit link) ---
-m2 <- glmmTMB(PlasmaDetection ~ PercentAg + Biomass + (1|Site), data = birds,
-              family = binomial(link = "logit"))
-
-coef_est2 <- fixef(m2)$cond
-sd_PercentAg_2 <- sd(birds$PercentAg, na.rm = TRUE)
-sd_Biomass_2 <- sd(birds$Biomass, na.rm = TRUE)
-
-# Use fixed latent SD for logistic link
-sd_latent_logit <- pi / sqrt(3)  # ~1.814
-
-std_beta_PercentAg_2 <- coef_est2["PercentAg"] * sd_PercentAg_2 / sd_latent_logit
-std_beta_Biomass_2 <- coef_est2["Biomass"] * sd_Biomass_2 / sd_latent_logit
-
-# --- 3. BodyCondition ~ PlasmaDetection + Biomass (Gaussian mixed model) ---
-m3 <- glmmTMB(BodyCondition ~ PlasmaDetection + Biomass + (1|Site), data = birds)
-
-coef_est3 <- fixef(m3)$cond
-sd_PlasmaDetection_3 <- sd(birds$PlasmaDetection, na.rm = TRUE)
-sd_Biomass_3 <- sd(birds$Biomass, na.rm = TRUE)
-sd_BodyCondition_3 <- sd(birds$BodyCondition, na.rm = TRUE)
-
-std_beta_PlasmaDetection_3 <- coef_est3["PlasmaDetection"] * sd_PlasmaDetection_3 / sd_BodyCondition_3
-std_beta_Biomass_3 <- coef_est3["Biomass"] * sd_Biomass_3 / sd_BodyCondition_3
-
-# --- Combine all standardized coefficients ---
-std_coefs <- list(
-  Biomass = c(PercentAg = std_beta_PercentAg_1, Season = std_beta_Season_1),
-  PlasmaDetection = c(PercentAg = std_beta_PercentAg_2, Biomass = std_beta_Biomass_2),
-  BodyCondition = c(PlasmaDetection = std_beta_PlasmaDetection_3, Biomass = std_beta_Biomass_3)
-)
-
-print(std_coefs)
 
 
 

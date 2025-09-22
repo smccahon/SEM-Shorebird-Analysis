@@ -8,6 +8,7 @@
 library(tidyverse)
 library(purrr)
 library(lme4)
+library(dplyr)
 
 
 # load data
@@ -42,62 +43,44 @@ birds$time_hours <- birds$seconds_since_midnight / 3600
 
 ### ...create body condition index (accounting for structural size ) -----------
 
-# Option 1. Regression of mass and wing chord
+# calculate species specific SMI
+birds <- birds %>%
+  group_by(Species) %>%
+  mutate(
+    logMass = log(Mass),
+    logWing = log(Wing)
+  ) %>%
+  group_modify(~ {
+    mod <- lm(logMass ~ logWing, data = .x)
+    b <- coef(mod)["logWing"]
+    L0 <- mean(.x$Wing, na.rm = TRUE)
+    .x %>%
+      mutate(SMI = Mass * (L0 / Wing)^b)
+  }) %>%
+  ungroup()
 
-# 1. Fit model
-birds.complete <- na.omit(birds[, c("Mass", "Species", "Wing", "Julian",
-                                    "Event")])
+# standardize SMI within each species
+birds <- birds %>%
+  group_by(Species) %>%
+  mutate(
+    SMI = (SMI - mean(SMI, na.rm = TRUE)) / sd(SMI, na.rm = TRUE)
+  ) %>%
+  ungroup()
 
-birds.complete$Species <- as.factor(birds.complete$Species)
 
-m1 <- lmer(Mass ~ as.factor(Species) + Wing + Julian + (1|Event), data = birds.complete,
-           na.action = na.omit)
+# view results
+ggplot(birds, aes(x = Species, y = SMI)) + geom_boxplot()
 
-m1 <- lm(Mass ~ Wing, data = birds)
-
-# 2. Create a new residual column with NAs
-birds$residual <- NA
-
-# 3. Get the rows that were used in the model
-used_rows <- as.numeric(rownames(model.frame(m)))
-
-# 4. Assign residuals only to those rows
-birds$residual[used_rows] <- residuals(m)
+m1 <- lm(SMI ~ Species, data = birds)
+summary(m1)
 
 simulationOutput <- simulateResiduals(fittedModel = m1) 
 plot(simulationOutput)
 testDispersion(m1) 
-testUniformity(simulationOutput)
+testZeroInflation(m1)
+testUniformity(simulationOutput) 
 testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
-
-plotResiduals(simulationOutput, form = birds.complete$Wing)
-
-
-# Option 2: Scaled Mass Index
-
-# 1. Calculate log-transformed variables
-birds$logMass <- log(birds$Mass)
-birds$logWing <- log(birds$Wing)
-
-# 2. Fit regression to get scaling exponent 'b'
-model <- lm(logMass ~ logWing, data = birds)
-b <- coef(model)["logWing"]
-
-# 3. Calculate mean reference size L0
-L0 <- mean(birds$Wing, na.rm = TRUE)
-
-# 4. Calculate Scaled Mass Index
-birds$SMI <- birds$Mass * (L0 / birds$Wing)^b
-
-plot(birds$Wing, birds$Mass, main = "Mass vs Wing Length")
-points(birds$Wing, birds$SMI, col = "red", pch = 19)
-legend("topleft", legend = c("Original Mass", "SMI"), col = c("black", "red"), pch = c(1,19))
-
-m1 <- lm(SMI ~ Species, data = birds)
-
-# Option 3 to explore later: relative fuel load
-
+testQuantiles(simulationOutput)
 
 ### ...create fattening index with PCA -----------------------------------------
 # high tri and low beta for high fattening
