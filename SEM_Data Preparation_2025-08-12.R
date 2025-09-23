@@ -43,7 +43,7 @@ birds$time_hours <- birds$seconds_since_midnight / 3600
 
 ### ...create body condition index (accounting for structural size ) -----------
 
-# calculate species specific SMI
+# calculate species-specific SMI
 birds <- birds %>%
   group_by(Species) %>%
   mutate(
@@ -68,11 +68,49 @@ birds <- birds %>%
   ungroup()
 
 
-# view results
-ggplot(birds, aes(x = Species, y = SMI)) + geom_boxplot()
 
-m1 <- lm(SMI ~ Species, data = birds)
-summary(m1)
+# view results
+excluded_species <- c("Marbled Godwit", "Shortbilled Dowitcher")
+
+birds_subset <- birds %>%
+  filter(!(Species %in% excluded_species))
+  
+ggplot(birds_subset, aes(x = Species, y = SMI)) + geom_boxplot() +
+  theme_classic() + geom_hline(yintercept = 0, col = "red", size = 1,
+                               linetype = "dashed") +
+  labs(x = NULL, y = "Scaled Mass Index (SMI)") +
+  theme(
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  ) +
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x))
+
+
+# standardize fat and pectoral score
+birds <- birds %>%
+  group_by(Species) %>%
+  mutate(
+    Fat_z = scale(Fat),
+    Pec_z = scale(PecSizeBest)
+  ) %>%
+  ungroup()
+
+condition_data <- birds %>%
+  select(SMI, Fat_z, Pec_z) %>%
+  drop_na()
+
+pca <- prcomp(condition_data, scale. = TRUE)
+
+# Add PC1 back to original birds dataset
+birds$Condition_PC1 <- NA
+birds$Condition_PC1[as.numeric(rownames(condition_data))] <- pca$x[, 1]
+
+
+m1 <- lm(SMI ~ 1, data = birds)
+m2 <- lm(Condition_PC1 ~ Biomass, data = birds)
+summary(m2)
 
 simulationOutput <- simulateResiduals(fittedModel = m1) 
 plot(simulationOutput)
@@ -121,6 +159,8 @@ beta_cor <- cor(pca_scores[, 1], birds_subset_clean$Beta)
 
 cat("Correlation with Tri:", round(tri_cor, 3), "\n")   # Should be positive
 cat("Correlation with Beta:", round(beta_cor, 3), "\n") # Should be negative
+
+m <- lm(FatteningIndex ~ Species, data = birds)
 
 
 ### ...trim down data and export file for analysis -----------------------------
