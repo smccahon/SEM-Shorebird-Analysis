@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 9/22/2025          #
+#         Modified on 9/29/2025          #
 #----------------------------------------#
 
 # load packages
@@ -21,18 +21,6 @@ library(statmod)
 birds <- read.csv("cleaned_data/shorebird_data_cleaned_2025-08-11.csv")
 invert <- read.csv("cleaned_data/invert_data_cleaned_2025-08-11.csv")
 wetland <- read.csv("original_data/neonic_wetland_survey_data_2025-08-12.csv")
-
-# combine species into bill length groupings
-birds <- birds %>%
-  mutate(Group = case_when(
-    Species %in% c("Marbled Godwit", "American Avocet", "Shortbilled Dowitcher",
-                   "Longbilled Dowitcher", "Greater Yellowlegs",
-                   "Willet") ~ "Long",
-    Species %in% c("Lesser Yellowlegs", "Pectoral Sandpiper", 
-                   "Wilsons Phalarope") ~ "Medium",
-    Species %in% c("Least Sandpiper", "Killdeer", 
-                   "Semipalmated Sandpiper") ~ "Short")) %>%
-  mutate(Group = factor(Group, levels = c("Short", "Medium", "Long")))
 
 # filter to only include 2023 data
 birds <- birds %>% 
@@ -145,11 +133,6 @@ m1 <- glm(Biomass ~ PercentAg + EnvDetection + WaterQuality +
           na.action = na.omit,
           family = Gamma(link = "log"))
 
-# reduced model
-# m1 <- glm(Biomass ~ PercentAg , data = invert.pos,
-#           na.action = na.omit,
-#           family = Gamma(link = "log"))
-
 # extract standardized coefficients manually
 beta <- coef(m1)["PercentAg"]
 sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
@@ -160,37 +143,36 @@ beta_std
 
 #---
 
-# ...plasma detection model----
+# ...plasma detection model ----
 
-# var <- c("PlasmaDetection", "PercentAg", "EnvDetection", "Season")
-# 
+var <- c("PlasmaDetection", "PercentAg", "EnvDetection")
+
 # Subset data to complete cases for those vars
-# birds_complete <- birds[complete.cases(birds[, var]), ]
+birds_complete_plasma <- birds[complete.cases(birds[, var]), ]
 
 # saturated
 m2 <- glm(PlasmaDetection ~ PercentAg + EnvDetection,
-            data = birds,
+            data = birds_complete_plasma,
             family = binomial(link = "logit"))
 
 #---
 
-# body condition model
+# ...body condition model ----
 
-# saturate
-m3 <- lm(SMI ~ Biomass + PercentAg + SPEI + PlasmaDetection +
-           time_hours + Julian + EnvDetection,
+# saturated model
+m3 <- lm(BCI ~ Biomass + PercentAg + SPEI + PlasmaDetection +
+           time_hours + EnvDetection,
          data = birds,
          na.action = na.omit)
 
-ggplot(birds, aes(x = Biomass, y = SMI)) + geom_point()
+# ...fattening index model ----
+
+# saturated model
+m4 <- lm(FatteningIndex ~ Biomass)
 
 
 
-# model_names <- paste0("m", 3:4)
-# 
-# models <- mget(model_names)
-# 
-# aictab(models, modnames = model_names)
+
 
 
 model <- psem(m1, m2, m3)
@@ -215,7 +197,7 @@ testQuantiles(simulationOutput)
 plotResiduals(simulationOutput, form = invert.pos$Season)
 plotResiduals(simulationOutput, form = invert.pos$PercentAg) # not perfect, but okay
 
-# m2 --- not good
+# m2 --- GOOD
 simulationOutput <- simulateResiduals(fittedModel = m2) 
 plot(simulationOutput)
 testDispersion(m2) 
@@ -223,7 +205,8 @@ testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
 testQuantiles(simulationOutput) 
 
-plotResiduals(simulationOutput, form = birds_complete$PercentAg)
+plotResiduals(simulationOutput, form = birds_complete_plasma$PercentAg)
+plotResiduals(simulationOutput, form = birds_complete_plasma$EnvDetection)
 
 # m3 ---
 simulationOutput <- simulateResiduals(fittedModel = m3) 

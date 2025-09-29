@@ -101,6 +101,194 @@ m1 <- glmmTMB(Biomass ~ log_PercentAg + Julian + (1 | dummy),
  summary(condition_pca)
  plot(condition_pca)
  
+ 
+ #------------------------------------------------------------------------------#
+ #      body condition index calculation with structural size (9/27/2025)   ----
+ #------------------------------------------------------------------------------#
+ 
+ # calculate species-specific SMI
+ birds <- birds %>%
+   group_by(Species) %>%
+   mutate(
+     logMass = log(Mass),
+     logWing = log(Wing)
+   ) %>%
+   group_modify(~ {
+     mod <- lm(logMass ~ logWing, data = .x)
+     b <- coef(mod)["logWing"]
+     L0 <- mean(.x$Wing, na.rm = TRUE)
+     .x %>%
+       mutate(SMI = Mass * (L0 / Wing)^b)
+   }) %>%
+   ungroup()
+ 
+ # standardize SMI within each species
+ birds <- birds %>%
+   group_by(Species) %>%
+   mutate(
+     SMI = (SMI - mean(SMI, na.rm = TRUE)) / sd(SMI, na.rm = TRUE)
+   ) %>%
+   ungroup()
+ 
+ 
+ ### REVISED
+ # calculate species-specific SMI using b_SMA
+ birds <- birds %>%
+   group_by(Species) %>%
+   mutate(
+     logMass = log(Mass),
+     logWing = log(Wing)
+   ) %>%
+   group_modify(~ {
+     mod <- lm(logMass ~ logWing, data = .x)
+     b_ols <- coef(mod)["logWing"]
+     r <- cor(.x$logMass, .x$logWing, use = "complete.obs")
+     b_sma <- b_ols / r
+     L0 <- mean(.x$Wing, na.rm = TRUE)
+     .x %>%
+       mutate(SMI = Mass * (L0 / Wing)^b_sma)
+   }) %>%
+   ungroup()
+ 
+ # standardize SMI within species (optional)
+ birds <- birds %>%
+   group_by(Species) %>%
+   mutate(
+     SMI = (SMI - mean(SMI, na.rm = TRUE)) / sd(SMI, na.rm = TRUE)
+   ) %>%
+   ungroup()
+ 
+ 
+ m <- lm(SMI ~ Biomass, data = birds)
+ 
+ # view results
+ excluded_species <- c("Marbled Godwit", "Shortbilled Dowitcher")
+ 
+ birds_subset <- birds %>%
+   filter(!(Species %in% excluded_species))
+ 
+ ggplot(birds_subset, aes(x = Species, y = SMI)) + geom_boxplot() +
+   theme_classic() + geom_hline(yintercept = 0, col = "red", size = 1,
+                                linetype = "dashed") +
+   labs(x = NULL, y = "Scaled Mass Index (SMI)") +
+   theme(
+     axis.title.x = element_text(size = 14),
+     axis.title.y = element_text(size = 14),
+     axis.text.x = element_text(size = 12),
+     axis.text.y = element_text(size = 12)
+   ) +
+   scale_x_discrete(labels = function(x) gsub(" ", "\n", x))
+ 
+ 
+ # standardize fat and pectoral score
+ birds <- birds %>%
+   group_by(Species) %>%
+   mutate(
+     Fat_z = scale(Fat),
+     Pec_z = scale(PecSizeBest)
+   ) %>%
+   ungroup()
+ 
+ condition_data <- birds %>%
+   select(SMI, Fat_z, Pec_z) %>%
+   drop_na()
+ 
+ pca <- prcomp(condition_data, scale. = TRUE)
+ 
+ # Add PC1 back to original birds dataset
+ birds$Condition_PC1 <- NA
+ birds$Condition_PC1[as.numeric(rownames(condition_data))] <- pca$x[, 1]
+ 
+ 
+ m1 <- lm(SMI ~ 1, data = birds)
+ m2 <- lm(Condition_PC1 ~ Biomass, data = birds)
+ summary(m2)
+ 
+ simulationOutput <- simulateResiduals(fittedModel = m1) 
+ plot(simulationOutput)
+ testDispersion(m1) 
+ testZeroInflation(m1)
+ testUniformity(simulationOutput) 
+ testOutliers(simulationOutput) 
+ testQuantiles(simulationOutput)
+ 
+ 
+ # mass/wing length ----
+ birds <- birds %>% 
+   mutate(Mass.Wing = (Mass / Wing))
+ 
+ excluded_species <- c("Marbled Godwit", "Shortbilled Dowitcher",
+                       "Greater Yellowlegs")
+ 
+ birds_subset <- birds %>%
+   filter(!(Species %in% excluded_species))
+ 
+ ggplot(birds_subset, aes(x = Species, y = Mass.Wing)) + geom_boxplot() +
+   theme_classic() +
+   labs(x = NULL, y = "Mass / Wing Length") +
+   theme(
+     axis.title.x = element_text(size = 14),
+     axis.title.y = element_text(size = 14),
+     axis.text.x = element_text(size = 12),
+     axis.text.y = element_text(size = 12)
+   ) +
+   scale_x_discrete(labels = function(x) gsub(" ", "\n", x))
+ 
+ 
+ 
+ # standardized regression per species
+ birds <- birds_subset %>%
+   group_by(Species) %>%
+   mutate(
+     log_mass = log(Mass),
+     log_wing = log(Wing),
+     # Fit regression per species, get residuals
+     resid = residuals(lm(log_mass ~ log_wing)),
+     # Standardize residuals (mean=0, sd=1) per species
+     std_resid = scale(resid)[,1]
+   ) %>%
+   ungroup()
+ 
+ ggplot(birds, aes(x = Species, y = std_resid)) + geom_boxplot() +
+   theme_classic() +
+   labs(x = NULL, y = "Standardized Residuals from log(Mass) ~ log(Wing)") +
+   theme(
+     axis.title.x = element_text(size = 14),
+     axis.title.y = element_text(size = 14),
+     axis.text.x = element_text(size = 12),
+     axis.text.y = element_text(size = 12)
+   ) +
+   scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
+   geom_hline(linetype = "dashed", color = "red", yintercept = 0,
+              size = 1)
+ 
+ 
+ 
+ # scaled mass index -- looks the same as mass...
+ 
+ plot(birds$Wing, birds$Mass)
+ 
+ birds <- birds %>%
+   group_by(Species) %>%
+   mutate(
+     log_mass = log(Mass),
+     log_wing = log(Wing),
+     b = coef(lm(log_mass ~ log_wing))[2],
+     L0 = mean(Wing),
+     SMI = Mass * (L0 / Wing)^b
+   )
+ 
+ ggplot(birds, aes(x = Species, y = Mass)) + geom_boxplot() +
+   theme_classic() +
+   labs(x = NULL, y = "Scaled Mass Index (g)") +
+   theme(
+     axis.title.x = element_text(size = 14),
+     axis.title.y = element_text(size = 14),
+     axis.text.x = element_text(size = 12),
+     axis.text.y = element_text(size = 12)
+   ) +
+   scale_x_discrete(labels = function(x) gsub(" ", "\n", x))
+ 
  #------------------------------------------------------------------------------#
  #                    Full Dataset Preparation (9/11/2025)                  ----                        
  #------------------------------------------------------------------------------#   
@@ -232,5 +420,15 @@ m1 <- glmmTMB(Biomass ~ log_PercentAg + Julian + (1 | dummy),
  beta_std
  
  
- 
+ # combine species into bill length groupings ----
+ birds <- birds %>%
+   mutate(Group = case_when(
+     Species %in% c("Marbled Godwit", "American Avocet", "Shortbilled Dowitcher",
+                    "Longbilled Dowitcher", "Greater Yellowlegs",
+                    "Willet") ~ "Long",
+     Species %in% c("Lesser Yellowlegs", "Pectoral Sandpiper", 
+                    "Wilsons Phalarope") ~ "Medium",
+     Species %in% c("Least Sandpiper", "Killdeer", 
+                    "Semipalmated Sandpiper") ~ "Short")) %>%
+   mutate(Group = factor(Group, levels = c("Short", "Medium", "Long")))
  

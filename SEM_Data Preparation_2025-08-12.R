@@ -1,7 +1,7 @@
 #----------------------------------------#
 #          SEM Data Preparation          #
 # Created by Shelby McCahon on 8/01/2025 #
-#         Modified on 9/18/2025          #
+#         Modified on 9/29/2025          #
 #----------------------------------------#
 
 # load packages
@@ -9,6 +9,7 @@ library(tidyverse)
 library(purrr)
 library(lme4)
 library(dplyr)
+library(AICcmodavg)
 
 
 # load data
@@ -43,82 +44,52 @@ birds$time_hours <- birds$seconds_since_midnight / 3600
 
 ### ...create body condition index (accounting for structural size ) -----------
 
-# calculate species-specific SMI
+# filter complete cases
 birds <- birds %>%
-  group_by(Species) %>%
-  mutate(
-    logMass = log(Mass),
-    logWing = log(Wing)
-  ) %>%
-  group_modify(~ {
-    mod <- lm(logMass ~ logWing, data = .x)
-    b <- coef(mod)["logWing"]
-    L0 <- mean(.x$Wing, na.rm = TRUE)
-    .x %>%
-      mutate(SMI = Mass * (L0 / Wing)^b)
-  }) %>%
-  ungroup()
+  filter(complete.cases(Mass, Wing))
 
-# standardize SMI within each species
+birds.test <- birds %>%
+  filter(complete.cases(Event, Julian))
+
+# fit the log-log linear regression model and compare model fit
+# species-corrected
+m1 <- lm(log(Mass) ~ log(Wing) + Species, data = birds)
+
+# time-corrected
+m2 <- lm(log(Mass) ~ log(Wing) + Species + time_hours, data = birds)
+m3 <- lm(log(Mass) ~ log(Wing) + Species + Julian, data = birds)
+m4 <- lm(log(Mass) ~ log(Wing) + Species + Event, data = birds)
+m5 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Julian, data = birds)
+m6 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Event, data = birds)
+
+# model comparison
+model_names <- paste0("m", 1:6)
+
+models <- mget(model_names)
+
+aictab(models, modnames = model_names) # m4 is best
+
+# assess model fit
+plot(m4) # good
+
+# extract residuals
 birds <- birds %>%
-  group_by(Species) %>%
-  mutate(
-    SMI = (SMI - mean(SMI, na.rm = TRUE)) / sd(SMI, na.rm = TRUE)
-  ) %>%
-  ungroup()
+  mutate(BCI = residuals(m4))
 
-
-
-# view results
-excluded_species <- c("Marbled Godwit", "Shortbilled Dowitcher")
-
-birds_subset <- birds %>%
-  filter(!(Species %in% excluded_species))
-  
-ggplot(birds_subset, aes(x = Species, y = SMI)) + geom_boxplot() +
-  theme_classic() + geom_hline(yintercept = 0, col = "red", size = 1,
-                               linetype = "dashed") +
-  labs(x = NULL, y = "Scaled Mass Index (SMI)") +
+# plot data
+ggplot(birds, aes(x = Species, y = BCI)) + geom_boxplot() +
+  theme_classic() +
+  labs(x = NULL, y = "Relative Body Condition Index") +
   theme(
     axis.title.x = element_text(size = 14),
     axis.title.y = element_text(size = 14),
     axis.text.x = element_text(size = 12),
     axis.text.y = element_text(size = 12)
   ) +
-  scale_x_discrete(labels = function(x) gsub(" ", "\n", x))
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
+  geom_hline(linetype = "dashed", color = "red", yintercept = 0,
+             size = 1)
 
-
-# standardize fat and pectoral score
-birds <- birds %>%
-  group_by(Species) %>%
-  mutate(
-    Fat_z = scale(Fat),
-    Pec_z = scale(PecSizeBest)
-  ) %>%
-  ungroup()
-
-condition_data <- birds %>%
-  select(SMI, Fat_z, Pec_z) %>%
-  drop_na()
-
-pca <- prcomp(condition_data, scale. = TRUE)
-
-# Add PC1 back to original birds dataset
-birds$Condition_PC1 <- NA
-birds$Condition_PC1[as.numeric(rownames(condition_data))] <- pca$x[, 1]
-
-
-m1 <- lm(SMI ~ 1, data = birds)
-m2 <- lm(Condition_PC1 ~ Biomass, data = birds)
-summary(m2)
-
-simulationOutput <- simulateResiduals(fittedModel = m1) 
-plot(simulationOutput)
-testDispersion(m1) 
-testZeroInflation(m1)
-testUniformity(simulationOutput) 
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput)
 
 ### ...create fattening index with PCA -----------------------------------------
 # high tri and low beta for high fattening
@@ -160,14 +131,11 @@ beta_cor <- cor(pca_scores[, 1], birds_subset_clean$Beta)
 cat("Correlation with Tri:", round(tri_cor, 3), "\n")   # Should be positive
 cat("Correlation with Beta:", round(beta_cor, 3), "\n") # Should be negative
 
-m <- lm(FatteningIndex ~ Species, data = birds)
-
-
 ### ...trim down data and export file for analysis -----------------------------
 birds_cleaned <- birds %>% 
-  select(Individual, Site, Event, Season, Age, Fat, PecSizeBest, Beta, Permanence, 
+  dplyr::select(Individual, Site, Event, Season, Age, Fat, PecSizeBest, Beta, Permanence, 
          NearestCropDistance_m, Max_Flock_Size,
-         PlasmaDetection, seconds_since_midnight, Species, PercentAg, SMI,
+         PlasmaDetection, seconds_since_midnight, Species, PercentAg, BCI,
          Percent_Total_Veg, Julian, Mass, OverallNeonic,
          Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
          AnyDetection, MigStatus, AgCategory, SPEI, Sex, Tri, 
