@@ -1,14 +1,13 @@
 #----------------------------------------#
 #          Variable Correlations         #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 9/15/2025          #
+#         Modified on 9/30/2025          #
 #----------------------------------------#
 
 # load data
 birds <- read.csv("cleaned_data/shorebird_data_cleaned_2025-08-11.csv")
 invert <- read.csv("cleaned_data/invert_data_cleaned_2025-08-11.csv")
 wetland <- read.csv("original_data/neonic_wetland_survey_data_2025-08-12.csv")
-full <- read.csv("cleaned_data/full_data_cleaned_2025-08-29.csv")
 
 # filter to only include 2023 data
 birds <- birds %>% 
@@ -105,38 +104,12 @@ wetland <- wetland %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
-full <- full %>% 
-  mutate(PlasmaDetection = case_when(
-    PlasmaDetection == "Y" ~ 1,
-    PlasmaDetection == "N" ~ 0,
-    TRUE ~ NA_real_),
-    InvertPesticideDetection = case_when(
-      InvertPesticideDetection == "Y" ~ 1,
-      InvertPesticideDetection == "N" ~ 0,
-      TRUE ~ NA_real_), 
-    AnyDetection = case_when(
-      AnyDetection == "Y" ~ 1,
-      AnyDetection == "N" ~ 0,
-      TRUE ~ NA_real_),
-    EnvDetection = case_when(
-      EnvDetection == "Y" ~ 1,
-      EnvDetection == "N" ~ 0,
-      TRUE ~ NA_real_),
-    Season = case_when(
-      Season == "Spring" ~ 1,
-      Season == "Fall" ~ 0),
-    Permanence = case_when(
-      Permanence %in% c("Temporary", "Seasonal") ~ 1,
-      Permanence == "Semipermanent" ~ 2,
-      Permanence == "Permanent" ~ 3,
-      TRUE ~ NA_real_))
-
 #------------------------------------------------------------------------------#
 #                    continuous variable correlations                       ----                        
 #------------------------------------------------------------------------------# 
 
 # Select only numeric columns
-numeric_vars <- invert %>% select(where(is.numeric))
+numeric_vars <- birds %>% select(where(is.numeric))
 
 # Calculate correlation matrix (Pearson by default)
 cor_matrix <- cor(numeric_vars, use = "pairwise.complete.obs")
@@ -160,33 +133,33 @@ result <- data.frame(
 print(result)
 
 #------------------------------------------------------------------------------#
-#              categorical variable correlations (INVERTS)                  ----                        
+#                   categorical variable correlations                       ----                        
 #------------------------------------------------------------------------------# 
 
 
 # dominant crop type and % cropland cover
-summary(aov(data = invert, PercentAg ~ DominantCrop)) # yes
+summary(aov(data = wetland, PercentAg ~ DominantCrop))
 
 # season and permanence
-summary(aov(data = invert, Season ~ Permanence)) # yes
+summary(aov(data = wetland, Season ~ Permanence)) 
 
 # season and detection
-summary(aov(data = invert, Season ~ EnvDetection)) # no
+summary(aov(data = wetland, Season ~ EnvDetection)) 
 
 # season and percentag
-summary(aov(data = invert, Season ~ PercentAg)) # no
+summary(aov(data = wetland, Season ~ PercentAg)) 
 
 # julian and percentag
-summary(aov(data = invert, Julian ~ Permanence)) # yes
+summary(aov(data = wetland, Julian ~ Permanence)) 
 
 # julian and envdetection
-summary(aov(data = invert, Julian ~ EnvDetection)) # no
+summary(aov(data = wetland, Julian ~ EnvDetection)) 
 
 # julian and envdetection
-summary(aov(data = invert, PercentAg ~ EnvDetection)) # no
+summary(aov(data = wetland, PercentAg ~ EnvDetection))
 
 # percentveg and envdetection
-summary(aov(data = invert, PercentLocalVeg_50m ~ EnvDetection)) # no
+summary(aov(data = wetland, PercentLocalVeg_50m ~ EnvDetection)) 
 
 # percentveg and envdetection
-summary(aov(data = invert, PercentLocalVeg_50m ~ EnvDetection)) # no
+summary(aov(data = wetland, PercentLocalVeg_50m ~ EnvDetection)) 

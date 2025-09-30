@@ -1,7 +1,7 @@
 #----------------------------------------#
 #          SEM Data Preparation          #
 # Created by Shelby McCahon on 8/01/2025 #
-#         Modified on 9/29/2025          #
+#         Modified on 9/30/2025          #
 #----------------------------------------#
 
 # load packages
@@ -15,7 +15,7 @@ library(AICcmodavg)
 # load data
 birds <- read.csv("original_data/shorebird_body_condition_data_2025-05-29.csv")
 invert <- read.csv("original_data/macroinvertebrate_data_2025-08-22.csv")
-full <- read.csv("original_data/full_model_dataset_2025-08-29.csv")
+wetland <- read.csv("original_data/neonic_wetland_survey_data_2025-08-12.csv")
 
 #------------------------------------------------------------------------------#
 #                         Shorebird Data Preparation                        ----                        
@@ -47,9 +47,6 @@ birds$time_hours <- birds$seconds_since_midnight / 3600
 # filter complete cases
 birds <- birds %>%
   filter(complete.cases(Mass, Wing))
-
-birds.test <- birds %>%
-  filter(complete.cases(Event, Julian))
 
 # fit the log-log linear regression model and compare model fit
 # species-corrected
@@ -191,6 +188,52 @@ invert_cleaned <- invert %>%
 write.csv(invert_cleaned, "cleaned_data/invert_data_cleaned_2025-08-11.csv",
           row.names = FALSE)
 
+
+#------------------------------------------------------------------------------#
+#                         Wetland Data Preparation                          ----                        
+#------------------------------------------------------------------------------#   
+
+### ...create water quality index with PCA -------------------------------------
+
+# subset the dataset to only include relevant variables
+wetland_subset <- wetland[, c("Conductivity_uS.cm", "Salinity_ppt", 
+                            "TDS_mg.L")]
+
+# remove rows with NAs
+wetland_subset_clean <- wetland_subset[complete.cases(wetland_subset), ] # n = 100
+cor(wetland_subset_clean) # ranges from 0.97-0.99
+
+# Run PCA on the cleaned data
+pca_result <- prcomp(wetland_subset_clean, center = TRUE, scale. = TRUE)
+
+# 99% explained by PC1
+summary(pca_result)
+
+# View the PCA scores (principal components)
+pca_scores <- pca_result$x
+
+# Merge PCA scores back to the original dataset
+# Create a data frame to store the PCA scores for the rows with no missing data
+wetland$WaterQuality <- NA  # Initialize with NA values
+
+# Add the principal component scores for the rows without NA values
+wetland[complete.cases(wetland_subset), "WaterQuality"] <- pca_scores[, 1]
+
+### ...trim down data and export file for analysis -----------------------------
+wetland_cleaned <- wetland %>% 
+  select(Wetland, Julian, Season, Year, Event, PercentAg, AgCategory,
+         DominantCrop, NearestCropDistance_m, NearestCropType, SPEI,
+         Drought.Classification, Buffered, WaterNeonicDetection, 
+         NeonicWater_ng.L, NeonicInvert_ng.g, InvertPesticideDetection,
+         PesticideInvert_ng.g, EnvDetection, AnnualSnowfall_in, 
+         PrecipitationAmount_7days, DaysSinceLastPrecipitation_5mm, Biomass,
+         Diversity, pH_probe, WaterTemp, WaterQuality, Permanence,
+         Dist_Closest_Wetland_m, PercentLocalVeg_50m, ShorebirdsPresent,
+         Wetland.Survey, Invert.Survey, Shorebird.Capture, PlasmaNeonic,
+         InvertPesticide, WaterNeonic)
+
+write.csv(wetland_cleaned, "cleaned_data/wetland_data_cleaned_2025-09-30.csv",
+          row.names = FALSE)
 
 
 
