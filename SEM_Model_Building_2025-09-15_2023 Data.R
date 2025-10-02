@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 9/29/2025          #
+#         Modified on 10/02/2025          #
 #----------------------------------------#
 
 # load packages
@@ -153,20 +153,20 @@ m1 <- glm(Biomass ~ PercentAg + EnvDetection + WaterQuality +
 #   geom_point() + my_theme
 
 # extract standardized coefficients manually
- # beta <- coef(m1)["PercentLocalVeg_50m"]
- # sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
- #                trigamma(1 / summary(m1)$dispersion)) # observation-level variance
- # sd_x <- sd(invert.pos$PercentLocalVeg_50m)
- # beta_std <- beta * (sd_x / sd_y)
- # beta_std
+  beta <- coef(m1)["PercentAg"]
+  sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
+                 trigamma(1 / summary(m1)$dispersion)) # observation-level variance
+  sd_x <- sd(invert.pos$PercentAg)
+  beta_std <- beta * (sd_x / sd_y)
+  beta_std
 
 #---
 
 # ...plasma detection model ----
 
 # saturated
-m2 <- glmmTMB(PlasmaDetection ~ PercentAg + EnvDetection + SPEI + time_hours +
-                MigStatus + (1|Site),
+m2 <- glm(PlasmaDetection ~ PercentAg + EnvDetection + SPEI + time_hours +
+                MigStatus,
             data = birds.pos,
             family = binomial(link = "logit"))
 
@@ -180,8 +180,8 @@ m2 <- glmmTMB(PlasmaDetection ~ PercentAg + EnvDetection + SPEI + time_hours +
 # ...body condition model ----
 
 # saturated model
-m3 <- glmmTMB(BCI ~ Biomass + PercentAg + SPEI + PlasmaDetection +
-           time_hours + (1|Site),
+m3 <- lm(BCI ~ Biomass + PercentAg + SPEI + PlasmaDetection +
+           time_hours,
          data = birds.pos,
          na.action = na.omit)
 
@@ -196,8 +196,8 @@ m3 <- glmmTMB(BCI ~ Biomass + PercentAg + SPEI + PlasmaDetection +
 # ...fattening index model ----
 
 # saturated model
-m4 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + SPEI +
-           PlasmaDetection + time_hours + BCI + EnvDetection + (1|Site),
+m4 <- lm(FatteningIndex ~ Biomass + MigStatus + PercentAg + SPEI +
+           PlasmaDetection + time_hours + BCI + EnvDetection,
          data = birds.pos,
          na.action = na.omit)
 
@@ -227,31 +227,28 @@ m5 <- glm(EnvDetection ~ AnnualSnowfall_in + PercentAg +
 
 #---
 
-# ...water quality model ISSUES WITH MODEL FIT----
+# ...water quality and veg models ISSUES WITH MODEL FIT----
 
 # saturated model
-m6 <- lm(WaterQuality ~ PercentAg + PercentLocalVeg_50m + SPEI,
+m6 <- lm(WaterQuality ~ PercentAg,
          data = wetland.pos,
          na.action = na.omit)
 
 # view individual relationships
-# ggplot(wetland.pos, aes(x = Season, y = WaterQuality)) +
-#   geom_point() + my_theme + geom_hline(yintercept = 0)
+ # ggplot(wetland.pos, aes(x = PercentAg, y = WaterQuality)) +
+ #   geom_point() + my_theme + geom_hline(yintercept = 0)
 
 
 #---
-
-# ...diversity model ----
-
-# saturated model
-m7 <- lm(Diversity ~ PercentAg + EnvDetection + WaterQuality + 
-           PercentLocalVeg_50m + Season, data = invert.pos)
-
+ 
+# ...vegetation cover ----
+m7 <- lm(PercentLocalVeg_50m ~ WaterQuality + Season + AnnualSnowfall_in, 
+         data = wetland.pos)
+ 
 
 model <- psem(m1, m2, m3, m4, m5, m6, m7)
 summary(model, conserve = TRUE)
 # print(model)
-
 
 #------------------------------------------------------------------------------#
 #            model diagnostics with DHARMa (saturated models)               ----                        
@@ -337,12 +334,11 @@ testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
 testQuantiles(simulationOutput) 
 
-plotResiduals(simulationOutput, form = model.frame(m6)$Season)
+plotResiduals(simulationOutput, form = model.frame(m6)$SPEI)
 plotResiduals(simulationOutput, form = model.frame(m6)$PercentLocalVeg_50m) 
 plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg)
 
-
-# m7 --- 
+# m7 --- ISSUES
 simulationOutput <- simulateResiduals(fittedModel = m7) 
 plot(simulationOutput)
 testDispersion(m7) 
@@ -350,8 +346,6 @@ testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
 testQuantiles(simulationOutput) 
 
-plotResiduals(simulationOutput, form = model.frame(m6)$Season)
-plotResiduals(simulationOutput, form = model.frame(m6)$PercentLocalVeg_50m) 
-plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg)
+plotResiduals(simulationOutput, form = model.frame(m7)$WaterQuality)
 
 
