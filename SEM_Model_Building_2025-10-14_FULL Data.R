@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 10/02/2025          #
+#         Modified on 10/14/2025          #
 #----------------------------------------#
 
 # load packages
@@ -21,10 +21,11 @@ library(statmod)
 birds <- read.csv("cleaned_data/shorebird_data_cleaned_2025-08-11.csv")
 invert <- read.csv("cleaned_data/invert_data_cleaned_2025-08-11.csv")
 wetland <- read.csv("cleaned_data/wetland_data_cleaned_2025-09-30.csv")
+full <- read.csv("cleaned_data/full_data_cleaned_2025-10-14.csv")
 
 # filter to only include 2023 data
 birds <- birds %>% 
-  filter(Event %in% c("Fall 2023", "Spring 2023")) # 126 birds
+  filter(Event %in% c("Fall 2023", "Spring 2023")) # 122 birds
 
 wetland <- wetland %>% 
   filter(Year == "2023") # 79 wetland surveys surveys
@@ -129,9 +130,31 @@ wetland <- wetland %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
+full <- full %>% 
+  mutate(WaterNeonicDetection = case_when(
+    WaterNeonicDetection == "Y" ~ 1,
+    WaterNeonicDetection == "N" ~ 0,
+    TRUE ~ NA_real_),
+    InvertPesticideDetection = case_when(
+      InvertPesticideDetection == "Y" ~ 1,
+      InvertPesticideDetection == "N" ~ 0,
+      TRUE ~ NA_real_),
+    EnvDetection = case_when(
+      EnvDetection == "Y" ~ 1,
+      EnvDetection == "N" ~ 0,
+      TRUE ~ NA_real_),
+    Season = case_when(
+      Season == "Spring" ~ 1,
+      Season == "Fall" ~ 0),
+    Permanence = case_when(
+      Permanence %in% c("Temporary", "Seasonal") ~ 1,
+      Permanence == "Semipermanent" ~ 2,
+      Permanence == "Permanent" ~ 3,
+      TRUE ~ NA_real_))
+
 
 #------------------------------------------------------------------------------#
-#              fit individual models (structural equations)                 ----                        
+#         fit individual models to full dataset (structural equations)      ----                        
 #------------------------------------------------------------------------------# 
 
 # ...biomass model ----
@@ -141,16 +164,50 @@ wetland <- wetland %>%
 invert.pos <- subset(invert, Biomass > 0)
 birds.pos <- subset(birds, Biomass > 0)
 wetland.pos <- subset(wetland, Biomass > 0)
+full.pos <- subset(full, Biomass > 0) # 11 wetlands total
 
-# saturated model
-m1 <- glm(Biomass ~ PercentAg + EnvDetection + WaterQuality + 
-            PercentLocalVeg_50m + Season, data = invert.pos,
+full.om <- subset(full, Biomass < 3) # 10 wetlands total
+
+# can we use full invert dataset? answer is no (biased estimate)
+m1 <- glm(Biomass ~ PercentAg, data = invert.pos,
+          family = Gamma(link = "log")) # B = -2.48
+
+m2 <- glm(Biomass ~ PercentAg, data = full.pos,
+          family = Gamma(link = "log")) # B = -0.04
+
+# extract one row per site to avoid pseudoreplication (n = 11)
+site_data <- full %>%
+  distinct(Site, Biomass, PercentAg, Season)
+
+#  log transformation needed?
+m1 <- lm(Biomass ~ PercentAg, data = site_data)
+m2 <- lm(Biomass ~ PercentAg, data = site_data)
+
+summary(m1)
+summary(m2)
+
+model_names <- paste0("m", 1:2)
+
+models <- mget(model_names)
+
+aictab(models, modnames = model_names)
+
+
+
+
+m2 <- glm(Biomass ~ PercentAg, data = site_data,
           family = Gamma(link = "log"))
+
+
+
+
+
+
 
 # view individual relationships
 # clear effects of season and % cropland cover on biomass
-# ggplot(invert.pos, aes(x = PercentLocalVeg_50m, y = Biomass)) + 
-#   geom_point() + my_theme
+ ggplot(full, aes(x = PercentAg, y = Biomass)) + 
+   geom_point() + my_theme
 
 # extract standardized coefficients manually
   beta <- coef(m1)["PercentAg"]
@@ -251,8 +308,31 @@ summary(model, conserve = TRUE)
 # print(model)
 
 #------------------------------------------------------------------------------#
-#            model diagnostics with DHARMa (saturated models)               ----                        
+#            random invert code               ----                        
 #------------------------------------------------------------------------------# 
+
+
+# TEST (mixed datasets)
+m1 <- lm(Biomass ~ PercentAg + Season, data = invert) # contains extra invert information
+
+m2 <- lm(Mass ~ PercentAg + Season + Biomass, data = birds)
+
+model <- psem(m1,m2)
+summary(model)
+
+
+# TEST (full dataset)
+
+m3 <- lm(Biomass ~ PercentAg + Season, data = full)
+
+m4 <- lm(Mass ~ PercentAg + Season + Biomass, data =  full)
+
+m.full <- psem(m3,m4)
+summary(m.full)
+
+
+
+
 
 
 # m1 --- GOOD, no severe violations

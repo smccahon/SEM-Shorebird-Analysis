@@ -1,7 +1,7 @@
 #----------------------------------------#
 #          SEM Data Preparation          #
 # Created by Shelby McCahon on 8/01/2025 #
-#         Modified on 9/30/2025          #
+#         Modified on 10/14/2025          #
 #----------------------------------------#
 
 # load packages
@@ -16,6 +16,7 @@ library(AICcmodavg)
 birds <- read.csv("original_data/shorebird_body_condition_data_2025-05-29.csv")
 invert <- read.csv("original_data/macroinvertebrate_data_2025-08-22.csv")
 wetland <- read.csv("original_data/neonic_wetland_survey_data_2025-08-12.csv")
+full <- read.csv("original_data/full_model_dataset_2025-08-29.csv")
 
 #------------------------------------------------------------------------------#
 #                         Shorebird Data Preparation                        ----                        
@@ -235,6 +236,159 @@ wetland_cleaned <- wetland %>%
 write.csv(wetland_cleaned, "cleaned_data/wetland_data_cleaned_2025-09-30.csv",
           row.names = FALSE)
 
+#------------------------------------------------------------------------------#
+#                         Full Dataset Preparation                          ----                        
+#------------------------------------------------------------------------------#  
+
+### ...standardize time to something more simple -------------------------------
+full$Time <- strptime(full$Time, format = "%H:%M")
+full$Time <- as.POSIXct(full$Time, tz = "America/Chicago")
+attributes(full$Time)$tzone
+
+# Calculate seconds since midnight
+full$seconds_since_midnight <- as.numeric(difftime(full$Time, 
+                                                    floor_date(full$Time, "day"), 
+                                                    units = "secs"))
+
+full$sin <- sin(2 * pi * full$seconds_since_midnight / (24 * 3600))
+full$cos <- cos(2 * pi * full$seconds_since_midnight / (24 * 3600))
+
+full$formatted_time <- format(as.POSIXct(full$seconds_since_midnight, 
+                                          origin = "1970-01-01", tz = "UTC"), 
+                               "%H:%M")
+
+# fix numeric instability issue in SEM modeling
+full$time_hours <- full$seconds_since_midnight / 3600 
+
+### ...create body condition index (accounting for structural size ) -----------
+
+# filter complete cases
+full <- full %>%
+  filter(complete.cases(Mass, Wing))
+
+# fit the log-log linear regression model and compare model fit
+# species-corrected
+m1 <- lm(log(Mass) ~ log(Wing) + Species, data = full)
+
+# time-corrected
+m2 <- lm(log(Mass) ~ log(Wing) + Species + time_hours, data = full)
+m3 <- lm(log(Mass) ~ log(Wing) + Species + Julian, data = full)
+m4 <- lm(log(Mass) ~ log(Wing) + Species + Event, data = full)
+m5 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Julian, data = full)
+m6 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Event, data = full)
+
+# model comparison
+model_names <- paste0("m", 1:6)
+
+models <- mget(model_names)
+
+aictab(models, modnames = model_names) # m1 is best, but use m4 for consistency
+
+# assess model fit
+plot(m4) # good
+
+# extract residuals
+full <- full %>%
+  mutate(BCI = residuals(m4))
+
+# plot data
+ggplot(full, aes(x = Species, y = BCI)) + geom_boxplot() +
+  theme_classic() +
+  labs(x = NULL, y = "Relative Body Condition Index") +
+  theme(
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  ) +
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
+  geom_hline(linetype = "dashed", color = "red", yintercept = 0,
+             size = 1)
 
 
+### ...create fattening index with PCA -----------------------------------------
+# high tri and low beta for high fattening
 
+# 1. Subset the dataset to only include relevant variables
+full_subset <- full[, c("Beta", "Tri")]
+
+# 2. Remove rows with NAs
+full_subset_clean <- full_subset[complete.cases(full_subset), ]  # n = 89
+
+# 3. Check correlation (optional)
+correlation <- cor(full_subset_clean)
+print(correlation)  # -0.23
+
+# 4. Run PCA on the cleaned data (centered and scaled)
+pca_result <- prcomp(full_subset_clean, center = TRUE, scale. = TRUE)
+
+# 5. Check PCA summary
+print(summary(pca_result))
+
+# 6. Extract PCA scores (principal components)
+pca_scores <- pca_result$x
+
+# 7. Flip the sign of PC1 so higher scores indicate fattening
+pca_scores[, 1] <- -pca_scores[, 1]
+
+# 8. Initialize FatteningIndex column with NA in original dataset
+full$FatteningIndex <- NA
+
+# 9. Add the flipped PC1 scores for rows without missing Beta or Tri
+full[complete.cases(full_subset), "FatteningIndex"] <- pca_scores[, 1]
+
+# 10. View PCA rotation/loadings
+print(pca_result$rotation)
+
+tri_cor <- cor(pca_scores[, 1], full_subset_clean$Tri)
+beta_cor <- cor(pca_scores[, 1], full_subset_clean$Beta)
+
+cat("Correlation with Tri:", round(tri_cor, 3), "\n")   # Should be positive
+cat("Correlation with Beta:", round(beta_cor, 3), "\n") # Should be negative
+
+### ...create water quality index with PCA -------------------------------------
+
+# subset the dataset to only include relevant variables
+full_subset <- full[, c("Conductivity_uS.cm", "Salinity_ppt", 
+                              "TDS_mg.L")]
+
+# remove rows with NAs
+full_subset_clean <- full_subset[complete.cases(full_subset), ] # n = 100
+cor(full_subset_clean) # ranges from 0.97-0.99
+
+# Run PCA on the cleaned data
+pca_result <- prcomp(full_subset_clean, center = TRUE, scale. = TRUE)
+
+# 99% explained by PC1
+summary(pca_result)
+
+# View the PCA scores (principal components)
+pca_scores <- pca_result$x
+
+# look at loadings
+pca_result$rotation
+
+# Merge PCA scores back to the original dataset
+# Create a data frame to store the PCA scores for the rows with no missing data
+full$WaterQuality <- NA  # Initialize with NA values
+
+# Add the principal component scores for the rows without NA values
+full[complete.cases(full_subset), "WaterQuality"] <- pca_scores[, 1]
+
+### ...trim down data and export file for analysis -----------------------------
+full_cleaned <- full %>% 
+  dplyr::select(Individual, Site, Event, Season, Age, Fat, PecSizeBest, Beta, 
+                Permanence, PercentLocalVeg_50m,
+                NearestCropDistance_m, Max_Flock_Size,
+                PlasmaDetection, seconds_since_midnight, Species, PercentAg, BCI,
+                Percent_Total_Veg, Julian, Mass, OverallNeonic,
+                Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
+                AnyDetection, MigStatus, AgCategory, SPEI, Sex, Tri, 
+                WaterQuality,
+                Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
+                InvertPesticideDetection, EnvDetection, FatteningIndex, time_hours,
+                AnnualSnowfall_in, PrecipitationAmount_7days, 
+                DaysSinceLastPrecipitation_5mm)
+
+write.csv(full_cleaned, "cleaned_data/full_data_cleaned_2025-10-14.csv",
+          row.names = FALSE)
