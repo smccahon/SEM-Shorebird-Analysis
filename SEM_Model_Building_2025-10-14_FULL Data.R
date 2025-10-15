@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 10/14/2025          #
+#         Modified on 10/15/2025          #
 #----------------------------------------#
 
 # load packages
@@ -166,6 +166,7 @@ birds.pos <- subset(birds, Biomass > 0)
 wetland.pos <- subset(wetland, Biomass > 0)
 full.pos <- subset(full, Biomass > 0) # 11 wetlands total
 
+# remove large outlier
 full.om <- subset(full, Biomass < 3) # 10 wetlands total
 
 # can we use full invert dataset? answer is no (biased estimate)
@@ -175,47 +176,27 @@ m1 <- glm(Biomass ~ PercentAg, data = invert.pos,
 m2 <- glm(Biomass ~ PercentAg, data = full.pos,
           family = Gamma(link = "log")) # B = -0.04
 
-# extract one row per site to avoid pseudoreplication (n = 11)
+# extract one row per site to avoid pseudoreplication in analysis (n = 11 wetlands)
 site_data <- full %>%
   distinct(Site, Biomass, PercentAg, Season)
 
-#  log transformation needed?
-m1 <- lm(Biomass ~ PercentAg, data = site_data)
-m2 <- lm(Biomass ~ PercentAg, data = site_data)
-
-summary(m1)
-summary(m2)
-
-model_names <- paste0("m", 1:2)
-
-models <- mget(model_names)
-
-aictab(models, modnames = model_names)
-
-
-
-
-m2 <- glm(Biomass ~ PercentAg, data = site_data,
+# gamma distribution or log-transformation? We know with the full dataset that
+# gamma is a better fit so use this for consistency with other
+# analysis
+m1 <- glm(Biomass ~ PercentAg, data = site_data,
           family = Gamma(link = "log"))
 
-
-
-
-
-
-
 # view individual relationships
-# clear effects of season and % cropland cover on biomass
- ggplot(full, aes(x = PercentAg, y = Biomass)) + 
-   geom_point() + my_theme
+ggplot(site_data, aes(x = PercentAg, y = Biomass)) + 
+ geom_point() + my_theme
 
 # extract standardized coefficients manually
   beta <- coef(m1)["PercentAg"]
   sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
                  trigamma(1 / summary(m1)$dispersion)) # observation-level variance
-  sd_x <- sd(invert.pos$PercentAg)
+  sd_x <- sd(site_data$PercentAg)
   beta_std <- beta * (sd_x / sd_y)
-  beta_std
+  beta_std # -0.517 is standardized estimate
 
 #---
 
@@ -307,48 +288,18 @@ model <- psem(m1, m2, m3, m4, m5, m6, m7)
 summary(model, conserve = TRUE)
 # print(model)
 
+
 #------------------------------------------------------------------------------#
-#            random invert code               ----                        
+#         fit individual models to full dataset (structural equations)      ----                        
 #------------------------------------------------------------------------------# 
 
-
-# TEST (mixed datasets)
-m1 <- lm(Biomass ~ PercentAg + Season, data = invert) # contains extra invert information
-
-m2 <- lm(Mass ~ PercentAg + Season + Biomass, data = birds)
-
-model <- psem(m1,m2)
-summary(model)
-
-
-# TEST (full dataset)
-
-m3 <- lm(Biomass ~ PercentAg + Season, data = full)
-
-m4 <- lm(Mass ~ PercentAg + Season + Biomass, data =  full)
-
-m.full <- psem(m3,m4)
-summary(m.full)
+# biomass model (DHARMa diagnostics unreliable with effect size of 11)
+plot(residuals(m1, type = "deviance") ~ fitted(m1))
+abline(h = 0, col = "red") # reasonable fit
 
 
 
 
-
-
-# m1 --- GOOD, no severe violations
-simulationOutput <- simulateResiduals(fittedModel = m1) 
-plot(simulationOutput)
-testDispersion(m1) 
-testZeroInflation(m1)
-testUniformity(simulationOutput) 
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput)
-
-plotResiduals(simulationOutput, form = model.frame(m1)$Season) # good
-plotResiduals(simulationOutput, form = model.frame(m1)$PercentAg) # slight pattern
-plotResiduals(simulationOutput, form = model.frame(m1)$PercentLocalVeg_50m) # good
-plotResiduals(simulationOutput, form = model.frame(m1)$WaterQuality) # slight pattern
-plotResiduals(simulationOutput, form = model.frame(m1)$EnvDetection) # good
 
 # m2 --- GOOD, no violations
 simulationOutput <- simulateResiduals(fittedModel = m2) 

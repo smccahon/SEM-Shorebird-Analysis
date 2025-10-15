@@ -384,7 +384,7 @@ full_cleaned <- full %>%
                 Percent_Total_Veg, Julian, Mass, OverallNeonic,
                 Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
                 AnyDetection, MigStatus, AgCategory, SPEI, Sex, Tri, 
-                WaterQuality,
+                WaterQuality, PesticideInvert_ng.g, WaterNeonicConc,
                 Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
                 InvertPesticideDetection, EnvDetection, FatteningIndex, time_hours,
                 AnnualSnowfall_in, PrecipitationAmount_7days, 
