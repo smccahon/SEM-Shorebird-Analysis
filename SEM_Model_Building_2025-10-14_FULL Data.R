@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 10/15/2025          #
+#         Modified on 10/20/2025          #
 #----------------------------------------#
 
 # load packages
@@ -17,17 +17,26 @@ library(AICcmodavg)
 library(cplm)
 library(statmod)
 
-# load data
+#------------------------------------------------------------------------------#
+#                        load data and organize datasets                    ----                        
+#------------------------------------------------------------------------------# 
+
+# birds: each row is an individual bird (2021-2023)
+# invert: each row is a biomass estimate from each wetland (2023)
+# wetland: each row is a wetland (2021-2023)
+# full: each row is an individual bird from 2023 (same dataset as birds subsetted to 2023)
+# birds and full kept separate because FI and BCI were calculated respectively
+# for each dataset
 birds <- read.csv("cleaned_data/shorebird_data_cleaned_2025-08-11.csv")
 invert <- read.csv("cleaned_data/invert_data_cleaned_2025-08-11.csv")
 wetland <- read.csv("cleaned_data/wetland_data_cleaned_2025-09-30.csv")
 full <- read.csv("cleaned_data/full_data_cleaned_2025-10-14.csv")
 
 # filter to only include 2023 data
-birds <- birds %>% 
+birds.2023 <- birds %>% 
   filter(Event %in% c("Fall 2023", "Spring 2023")) # 122 birds
 
-wetland <- wetland %>% 
+wetland.2023 <- wetland %>% 
   filter(Year == "2023") # 79 wetland surveys surveys
 
 # theme for plotting
@@ -76,6 +85,41 @@ birds <- birds %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
+birds.2023 <- birds.2023 %>% 
+  mutate(PlasmaDetection = case_when(
+    PlasmaDetection == "Y" ~ 1,
+    PlasmaDetection == "N" ~ 0,
+    TRUE ~ NA_real_),
+    WaterNeonicDetection = case_when(
+      WaterNeonicDetection == "Y" ~ 1,
+      WaterNeonicDetection == "N" ~ 0,
+      TRUE ~ NA_real_),
+    InvertPesticideDetection = case_when(
+      InvertPesticideDetection == "Y" ~ 1,
+      InvertPesticideDetection == "N" ~ 0,
+      TRUE ~ NA_real_), 
+    AnyDetection = case_when(
+      AnyDetection == "Y" ~ 1,
+      AnyDetection == "N" ~ 0,
+      TRUE ~ NA_real_),
+    EnvDetection = case_when(
+      EnvDetection == "Y" ~ 1,
+      EnvDetection == "N" ~ 0,
+      TRUE ~ NA_real_),
+    Season = case_when(
+      Season == "Spring" ~ 1,
+      Season == "Fall" ~ 0),
+    MigStatus = case_when(
+      MigStatus == "Migratory" ~ 1,
+      MigStatus == "Resident" ~ 0,
+      TRUE ~ NA_real_),
+    Permanence = case_when(
+      Permanence %in% c("Temporary", "Seasonal") ~ 1,
+      Permanence == "Semipermanent" ~ 2,
+      Permanence == "Permanent" ~ 3,
+      TRUE ~ NA_real_))
+
+
 
 invert <- invert %>% 
   mutate(WaterNeonicDetection = case_when(
@@ -93,10 +137,6 @@ invert <- invert %>%
     Season = case_when(
       Season == "Spring" ~ 1,
       Season == "Fall" ~ 0),
-    Buffered = case_when(
-      Buffered == "Y" ~ 1,
-      Buffered == "N" ~ 0,
-      TRUE ~ NA_real_),
     Permanence = case_when(
       Permanence %in% c("Temporary", "Seasonal") ~ 1,
       Permanence == "Semipermanent" ~ 2,
@@ -120,17 +160,13 @@ wetland <- wetland %>%
     Season = case_when(
       Season == "Spring" ~ 1,
       Season == "Fall" ~ 0),
-    Buffered = case_when(
-      Buffered == "Y" ~ 1,
-      Buffered == "N" ~ 0,
-      TRUE ~ NA_real_),
     Permanence = case_when(
       Permanence %in% c("Temporary", "Seasonal") ~ 1,
       Permanence == "Semipermanent" ~ 2,
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
-full <- full %>% 
+wetland.2023 <- wetland.2023 %>% 
   mutate(WaterNeonicDetection = case_when(
     WaterNeonicDetection == "Y" ~ 1,
     WaterNeonicDetection == "N" ~ 0,
@@ -152,6 +188,35 @@ full <- full %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
+full <- full %>% 
+  mutate(WaterNeonicDetection = case_when(
+    WaterNeonicDetection == "Y" ~ 1,
+    WaterNeonicDetection == "N" ~ 0,
+    TRUE ~ NA_real_),
+    InvertPesticideDetection = case_when(
+      InvertPesticideDetection == "Y" ~ 1,
+      InvertPesticideDetection == "N" ~ 0,
+      TRUE ~ NA_real_),
+    PlasmaDetection = case_when(
+      PlasmaDetection == "Y" ~ 1,
+      PlasmaDetection == "N" ~ 0,
+      TRUE ~ NA_real_),
+    EnvDetection = case_when(
+      EnvDetection == "Y" ~ 1,
+      EnvDetection == "N" ~ 0,
+      TRUE ~ NA_real_),
+    Season = case_when(
+      Season == "Spring" ~ 1,
+      Season == "Fall" ~ 0),
+    MigStatus = case_when(
+      MigStatus == "Migratory" ~ 1,
+      MigStatus == "Resident" ~ 0,
+      TRUE ~ NA_real_),
+    Permanence = case_when(
+      Permanence %in% c("Temporary", "Seasonal") ~ 1,
+      Permanence == "Semipermanent" ~ 2,
+      Permanence == "Permanent" ~ 3,
+      TRUE ~ NA_real_))
 
 #------------------------------------------------------------------------------#
 #         fit individual models to full dataset (structural equations)      ----                        
@@ -160,146 +225,289 @@ full <- full %>%
 # ...biomass model ----
 
 # model wetlands with biomass > 0 only, given tweedie is not supported (n = 66)
-# must do the same for all datasets or error related to gamma is thrown
-invert.pos <- subset(invert, Biomass > 0)
-birds.pos <- subset(birds, Biomass > 0)
-wetland.pos <- subset(wetland, Biomass > 0)
-full.pos <- subset(full, Biomass > 0) # 11 wetlands total
+# invert.pos <- subset(invert, Biomass > 0)
 
-# remove large outlier
-full.om <- subset(full, Biomass < 3) # 10 wetlands total
-
-# can we use full invert dataset? answer is no (biased estimate)
-m1 <- glm(Biomass ~ PercentAg, data = invert.pos,
-          family = Gamma(link = "log")) # B = -2.48
-
-m2 <- glm(Biomass ~ PercentAg, data = full.pos,
-          family = Gamma(link = "log")) # B = -0.04
+# can we use full invert dataset for this path? answer is no (very biased estimate)
+# proceed with full dataset from "full" (all biomass estimates > 0 by default)
+# m1 <- glm(Biomass ~ PercentAg, data = invert.pos,
+#           family = Gamma(link = "log")) # B = -2.48
+# 
+# m2 <- glm(Biomass ~ PercentAg, data = site_data,
+#           family = Gamma(link = "log")) # B = -0.04
 
 # extract one row per site to avoid pseudoreplication in analysis (n = 11 wetlands)
 site_data <- full %>%
   distinct(Site, Biomass, PercentAg, Season)
 
 # gamma distribution or log-transformation? We know with the full dataset that
-# gamma is a better fit so use this for consistency with other
-# analysis
+# gamma is a better fit so use this for consistency with other analysis
+
+#### ...final biomass model----
 m1 <- glm(Biomass ~ PercentAg, data = site_data,
           family = Gamma(link = "log"))
+
+# we know season is influential, should it be included despite overfitting?
+# answer is no, model without season is a much better model due to low sample size
+# across seasons (3 in spring, 8 in fall)
+
+# m2 <- glm(Biomass ~ PercentAg + Season, data = site_data,
+#           family = Gamma(link = "log"))
+# 
+# ...model comparison
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
 
 # view individual relationships
 ggplot(site_data, aes(x = PercentAg, y = Biomass)) + 
  geom_point() + my_theme
 
-# extract standardized coefficients manually
+# extract standardized coefficients manually from gamma distribution
   beta <- coef(m1)["PercentAg"]
   sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
                  trigamma(1 / summary(m1)$dispersion)) # observation-level variance
   sd_x <- sd(site_data$PercentAg)
   beta_std <- beta * (sd_x / sd_y)
-  beta_std # -0.517 is standardized estimate
+  beta_std # -0.541 is standardized estimate
+
 
 #---
 
 # ...plasma detection model ----
 
-# saturated
-m2 <- glm(PlasmaDetection ~ PercentAg + EnvDetection + SPEI + time_hours +
-                MigStatus,
-            data = birds.pos,
-            family = binomial(link = "logit"))
+# model with complete dataset -- SPEI removed because only 1 year of data
+  #### final plasma detection model ----
+m2 <- glm(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours + 
+             MigStatus,
+             data = full,
+             na.action = na.omit,
+             family = binomial(link = "logit"))
+  
+  
+# season or julian? season is a better fit...Julian may make more sense but
+# use season for consistency in SEM. either way, effect is not significant.
+# m1 <- glm(PlasmaDetection ~ PercentAg + Julian + EnvDetection + time_hours + 
+#             MigStatus,
+#             data = full,
+#             na.action = na.omit,
+#             family = binomial(link = "logit"))
+# 
+# m2 <- glm(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours + 
+#             MigStatus,
+#           data = full,
+#           na.action = na.omit,
+#           family = binomial(link = "logit"))
 
+# ...model comparison
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
+  
+# can we use full bird dataset for this path? yes...but some bias
+# m1 <- glm(PlasmaDetection ~ PercentAg + Julian + EnvDetection + time_hours + 
+#               MigStatus + SPEI,
+#             data = full,
+#             na.action = na.omit,
+#             family = binomial(link = "logit"))
+#   
+# m2 <- glm(PlasmaDetection ~ PercentAg + Julian + EnvDetection + 
+#                 time_hours + MigStatus + SPEI,
+#             data = birds,
+#             na.action = na.omit,
+#             family = binomial(link = "logit"))
+
+# summary(m1)
+# summary(m2)
+   
+# is random effect of site needed or helpful? yes for this model. simpler 
+# model without random effect preferred though
+# m1 <- glmmTMB(PlasmaDetection ~ PercentAg + Julian + EnvDetection + time_hours + 
+#                MigStatus,
+#              data = full,
+#              na.action = na.omit,
+#              family = binomial(link = "logit")) # preferred by AIC
+#    
+# m2 <- glmmTMB(PlasmaDetection ~ PercentAg + Julian + EnvDetection + time_hours + 
+#                    MigStatus + (1|Site),
+#                  data = full,
+#                  na.action = na.omit,
+#                  family = binomial(link = "logit")) # preferred by AIC
+# 
+# summary(m2) # variance is 0.2674, sd = 0.5171
+#    
+ # model_names <- paste0("m", 1:2)
+ # models <- mget(model_names)
+ # aictab(models, modnames = model_names)
+  
 # view individual relationships
-# no clear relationships with plasma detection
-# ggplot(birds.pos, aes(y = time_hours, x = as.factor(PlasmaDetection))) + 
+# ggplot(birds, aes(y = time_hours, x = as.factor(PlasmaDetection))) + 
 #   geom_boxplot() + my_theme
 
 #---
 
 # ...body condition model ----
+# BCI = body condition index corrected for species and season
+# values > 0 = individual is in better condition relative to its species captured
+# during that season
+# values < 0 = individual is in worse condition relative to its species captured
+# during that season
+# don't need to account for season as a predictor because it's already accounted for in BCI
 
-# saturated model
-m3 <- lm(BCI ~ Biomass + PercentAg + SPEI + PlasmaDetection +
+#### ...final body condition index model ----
+m3 <- lm(BCI ~ Biomass + PercentAg + PlasmaDetection +
            time_hours,
-         data = birds.pos,
-         na.action = na.omit)
+           data = full,
+           na.action = na.omit)
 
 # view individual relationships
 # no clear relationships with BCI
-# ggplot(birds.pos, aes(x = PlasmaDetection, y = BCI)) + geom_point() +
-#   geom_hline(yintercept = 0, linetype = "dashed", color = "red",
-#              size = 1) + my_theme
+ # ggplot(birds, aes(x = PercentAg, y = BCI)) + geom_point() +
+ #   geom_hline(yintercept = 0, linetype = "dashed", color = "red",
+ #              size = 1) + my_theme
+ #  
+
+# is random effect of site needed or helpful? no
+# m1 <- glmmTMB(BCI ~ Biomass + PercentAg + PlasmaDetection +
+#             time_hours + (1|Site),
+#           family = gaussian(),
+#           data = full,
+#           na.action = na.omit)
+# 
+# m2 <- glmmTMB(BCI ~ Biomass + PercentAg + PlasmaDetection +
+#             time_hours,
+#           family = gaussian(),
+#           data = full,
+#           na.action = na.omit) # simpler model preferred by AIC
+# 
+# summary(m1) # variability ~ 0
+# 
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
+
 
 #---
 
-# ...fattening index model ----
+# ...fattening index (FI) model ----
 
-# saturated model
-m4 <- lm(FatteningIndex ~ Biomass + MigStatus + PercentAg + SPEI +
-           PlasmaDetection + time_hours + BCI + EnvDetection,
-         data = birds.pos,
-         na.action = na.omit)
+#### ...final fattening index model ----
+m4 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+          PlasmaDetection + time_hours + BCI + EnvDetection,
+          family = gaussian(),
+          data = full,
+          na.action = na.omit)
+
+  
+# season or julian as time variable? they're about the same...season is better
+# and makes more sense conceptually anyways
+# m1 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Julian +
+#             PlasmaDetection + time_hours + BCI + EnvDetection,
+#             family = gaussian(),
+#             data = full,
+#             na.action = na.omit)
+#   
+# m2 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#             PlasmaDetection + time_hours + BCI + EnvDetection,
+#             family = gaussian(),
+#             data = full,
+#             na.action = na.omit)
+#   
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
+# 
+# # plot relationships
+# ggplot(data = full, aes(y = FatteningIndex, x = Julian)) + geom_point()
+  
+
+# is random effect of site needed or helpful? NO! Causes issues
+# m1 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Julian +
+#             PlasmaDetection + time_hours + BCI + EnvDetection,
+#           family = gaussian(),
+#           data = full,
+#           na.action = na.omit)
+# 
+# m2 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Julian +
+#             PlasmaDetection + time_hours + BCI + EnvDetection +
+#               (1|Site),
+#           family = gaussian(),
+#           data = full,
+#           na.action = na.omit)
+# 
+# summary(m2) # variance ~ 0; sd ~ 0
+# 
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
 
 # view individual relationships
-# positive relationship between FI and BCI
-# positive relationship between FI and time
-# positive relationship between FI and SPEI
-# ggplot(birds.pos, aes(x = SPEI, y = FatteningIndex)) + geom_point() +
-#   geom_hline(yintercept = 0, linetype = "dashed", color = "red",
-#              size = 1) + my_theme
+# ggplot(birds.all, aes(x = SPEI, y = FatteningIndex)) + geom_point() +
+#   geom_smooth(method = "lm", se = TRUE, color = "blue", size = 1) +
+#    geom_hline(yintercept = 0, linetype = "dashed", color = "red",
+#               size = 1) + my_theme
 
 #---
 
-# ...environmental detection ----
-
-# saturated model
-m5 <- glm(EnvDetection ~ AnnualSnowfall_in + PercentAg + 
-           SPEI + DaysSinceLastPrecipitation_5mm,
+# ...environmental detection model ----
+# extract one row per site to avoid pseudoreplication in analysis (n = 11 wetlands)
+site_data_wetland <- full %>%
+  distinct(Site, PercentAg, Season, AnnualSnowfall_in,
+           SPEI, DaysSinceLastPrecipitation_5mm, EnvDetection)
+  
+#  model with complete dataset with main variable of interest (PercentAg)
+#### ...final environmental detection model ----
+m5 <- glm(EnvDetection ~ PercentAg,
           family = binomial(link = "logit"),
-         data = wetland.pos,
+         data = site_data_wetland,
          na.action = na.omit)
 
+# can we use full wetland dataset? model is no, not reliably across predictors
+# will need to test each covariate individually to avoid overfitting
+# ...AnnualSnowfall_in has no bias, relationship is not significant though anyways
+# ...PercentAg has BIG bias, relationship is not significant though anyways
+# ...Season has BIG bias, relationship is not significant though anyways
+# ...SPEI has some bias, relationship is not significant though anyways
+# ...DaysSinceLastPrecip has no bias, relationship is not significant though anyways
+
+# m1 <- glm(EnvDetection ~ DaysSinceLastPrecipitation_5mm,
+#           family = binomial(link = "logit"),
+#           data = wetland,
+#           na.action = na.omit)
+# 
+# m2 <- glm(EnvDetection ~ DaysSinceLastPrecipitation_5mm,
+#           family = binomial(link = "logit"),
+#           data = site_data_wetland,
+#           na.action = na.omit)
+# 
+# summary(m1)
+# summary(m2)
+
 # view individual relationships
-# no clear relationships
-# ggplot(wetland.pos, aes(y = DaysSinceLastPrecipitation_5mm, x = EnvDetection)) +
-#   geom_boxplot(aes(group = EnvDetection)) + my_theme
+# no clear relationships with any covariates
+# ggplot(wetland, aes(y = SPEI, x = as.factor(EnvDetection))) +
+#    geom_boxplot(aes(group = EnvDetection)) + my_theme
 
-#---
+  
+# pectoral muscle
+ m6 <- lm(Standardized.Pec ~ Biomass + MigStatus + PercentAg + Season +
+    PlasmaDetection + time_hours + EnvDetection,
+    na.action = na.omit,
+    data = full)
 
-# ...water quality and veg models ISSUES WITH MODEL FIT----
+# run piecewise SEM ----
 
-# saturated model
-m6 <- lm(WaterQuality ~ PercentAg,
-         data = wetland.pos,
-         na.action = na.omit)
-
-# view individual relationships
- # ggplot(wetland.pos, aes(x = PercentAg, y = WaterQuality)) +
- #   geom_point() + my_theme + geom_hline(yintercept = 0)
-
-
-#---
- 
-# ...vegetation cover ----
-m7 <- lm(PercentLocalVeg_50m ~ WaterQuality + Season + AnnualSnowfall_in, 
-         data = wetland.pos)
- 
-
-model <- psem(m1, m2, m3, m4, m5, m6, m7)
+model <- psem(m1, m2, m3, m4, m5, m6)
 summary(model, conserve = TRUE)
 # print(model)
 
 
 #------------------------------------------------------------------------------#
-#         fit individual models to full dataset (structural equations)      ----                        
+#                             model diagnostics                             ----                        
 #------------------------------------------------------------------------------# 
 
 # biomass model (DHARMa diagnostics unreliable with effect size of 11)
 plot(residuals(m1, type = "deviance") ~ fitted(m1))
 abline(h = 0, col = "red") # reasonable fit
-
-
-
-
 
 # m2 --- GOOD, no violations
 simulationOutput <- simulateResiduals(fittedModel = m2) 
@@ -314,7 +522,7 @@ plotResiduals(simulationOutput, form = model.frame(m2)$EnvDetection) # good
 plotResiduals(simulationOutput, form = model.frame(m2)$SPEI) # good
 plotResiduals(simulationOutput, form = model.frame(m2)$MigStatus) # good
 plotResiduals(simulationOutput, form = model.frame(m2)$time_hours) # good
-
+plotResiduals(simulationOutput, form = model.frame(m2)$Julian) # good
 
 # m3 --- GOOD, no violations
 simulationOutput <- simulateResiduals(fittedModel = m3) 
@@ -326,8 +534,8 @@ testQuantiles(simulationOutput)
 
 plotResiduals(simulationOutput, form = model.frame(m3)$PercentAg) # good
 plotResiduals(simulationOutput, form = model.frame(m3)$PlasmaDetection) # good
-plotResiduals(simulationOutput, form = model.frame(m3)$SPEI) # very slight pattern
 plotResiduals(simulationOutput, form = model.frame(m3)$time_hours) # good
+plotResiduals(simulationOutput, form = model.frame(m3)$Biomass) # good
 
 
 # m4 --- GOOD, no violations
@@ -340,11 +548,16 @@ testQuantiles(simulationOutput)
 
 plotResiduals(simulationOutput, form = model.frame(m4)$PercentAg) # good
 plotResiduals(simulationOutput, form = model.frame(m4)$PlasmaDetection) # good
-plotResiduals(simulationOutput, form = model.frame(m4)$SPEI) # very slight pattern
-plotResiduals(simulationOutput, form = model.frame(m4)$time_hours) # good
+plotResiduals(simulationOutput, form = model.frame(m4)$Biomass) # good
+plotResiduals(simulationOutput, form = model.frame(m4)$MigStatus)  # good
+plotResiduals(simulationOutput, form = model.frame(m4)$time_hours)  # good
+plotResiduals(simulationOutput, form = model.frame(m4)$Season) # good
+plotResiduals(simulationOutput, form = model.frame(m4)$EnvDetection) # good
+plotResiduals(simulationOutput, form = model.frame(m4)$BCI) # good
+
 
 # m5 --- GOOD, no violations
-simulationOutput <- simulateResiduals(fittedModel = m5) 
+simulationOutput <- simulateResiduals(fittedModel = m6) 
 plot(simulationOutput)
 testDispersion(m5) 
 testUniformity(simulationOutput)
@@ -356,27 +569,9 @@ plotResiduals(simulationOutput, form = model.frame(m5)$DaysSinceLastPrecipitatio
 plotResiduals(simulationOutput, form = model.frame(m5)$SPEI) # good
 plotResiduals(simulationOutput, form = model.frame(m5)$time_hours) # good
 
+# env detection model (DHARMa diagnostics unreliable with effect size of 11)
+plot(residuals(m5, type = "deviance") ~ fitted(m5))
+abline(h = 0, col = "red") # reasonable fit
 
-# m6 --- ISSUES
-simulationOutput <- simulateResiduals(fittedModel = m6) 
-plot(simulationOutput)
-testDispersion(m6) 
-testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
-
-plotResiduals(simulationOutput, form = model.frame(m6)$SPEI)
-plotResiduals(simulationOutput, form = model.frame(m6)$PercentLocalVeg_50m) 
-plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg)
-
-# m7 --- ISSUES
-simulationOutput <- simulateResiduals(fittedModel = m7) 
-plot(simulationOutput)
-testDispersion(m7) 
-testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
-
-plotResiduals(simulationOutput, form = model.frame(m7)$WaterQuality)
 
 

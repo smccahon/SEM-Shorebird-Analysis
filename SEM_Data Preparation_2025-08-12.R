@@ -260,6 +260,25 @@ full$formatted_time <- format(as.POSIXct(full$seconds_since_midnight,
 # fix numeric instability issue in SEM modeling
 full$time_hours <- full$seconds_since_midnight / 3600 
 
+### ...create pectoral muscle index (accounting for structural size ) ----------
+
+# does this make any sense?
+# filter complete cases
+full <- full %>%
+  filter(complete.cases(PecSizeBest, Wing))
+
+# invert so we can log
+full$PecSizeBest <- full$PecSizeBest * -1
+
+# fit the log-log linear regression model and compare model fit
+# species-corrected
+m1 <- lm(log(PecSizeBest) ~ log(Wing) + Species + Season, data = full)
+plot(m1) # good fit
+
+# extract residuals
+full <- full %>%
+  mutate(Standardized.Pec = residuals(m1))
+
 ### ...create body condition index (accounting for structural size ) -----------
 
 # filter complete cases
@@ -388,7 +407,7 @@ full_cleaned <- full %>%
                 Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
                 InvertPesticideDetection, EnvDetection, FatteningIndex, time_hours,
                 AnnualSnowfall_in, PrecipitationAmount_7days, 
-                DaysSinceLastPrecipitation_5mm)
+                DaysSinceLastPrecipitation_5mm, Standardized.Pec)
 
 write.csv(full_cleaned, "cleaned_data/full_data_cleaned_2025-10-14.csv",
           row.names = FALSE)
