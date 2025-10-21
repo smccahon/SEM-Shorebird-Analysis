@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 10/20/2025          #
+#         Modified on 10/21/2025          #
 #----------------------------------------#
 
 # load packages
@@ -119,8 +119,6 @@ birds.2023 <- birds.2023 %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
-
-
 invert <- invert %>% 
   mutate(WaterNeonicDetection = case_when(
     WaterNeonicDetection == "Y" ~ 1,
@@ -142,7 +140,6 @@ invert <- invert %>%
       Permanence == "Semipermanent" ~ 2,
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
-
 
 wetland <- wetland %>% 
   mutate(WaterNeonicDetection = case_when(
@@ -259,8 +256,8 @@ m1 <- glm(Biomass ~ PercentAg, data = site_data,
 # aictab(models, modnames = model_names)
 
 # view individual relationships
-ggplot(site_data, aes(x = PercentAg, y = Biomass)) + 
- geom_point() + my_theme
+# ggplot(site_data, aes(x = PercentAg, y = Biomass)) + 
+#  geom_point() + my_theme
 
 # extract standardized coefficients manually from gamma distribution
   beta <- coef(m1)["PercentAg"]
@@ -452,7 +449,8 @@ m4 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
 # extract one row per site to avoid pseudoreplication in analysis (n = 11 wetlands)
 site_data_wetland <- full %>%
   distinct(Site, PercentAg, Season, AnnualSnowfall_in,
-           SPEI, DaysSinceLastPrecipitation_5mm, EnvDetection)
+           SPEI, DaysSinceLastPrecipitation_5mm, EnvDetection,
+           PesticideInvert_ng.g, WaterNeonicConc)
   
 #  model with complete dataset with main variable of interest (PercentAg)
 #### ...final environmental detection model ----
@@ -461,7 +459,7 @@ m5 <- glm(EnvDetection ~ PercentAg,
          data = site_data_wetland,
          na.action = na.omit)
 
-# can we use full wetland dataset? model is no, not reliably across predictors
+# can we use full wetland dataset? answer is no, not reliably across predictors
 # will need to test each covariate individually to avoid overfitting
 # ...AnnualSnowfall_in has no bias, relationship is not significant though anyways
 # ...PercentAg has BIG bias, relationship is not significant though anyways
@@ -486,20 +484,118 @@ m5 <- glm(EnvDetection ~ PercentAg,
 # no clear relationships with any covariates
 # ggplot(wetland, aes(y = SPEI, x = as.factor(EnvDetection))) +
 #    geom_boxplot(aes(group = EnvDetection)) + my_theme
+  
+  
+# do concentrations or detections have more explanatory power? DETECTIONS DO
+# water conc. aren't a good variable because there were no neonic detections
+# m10 <- lm(PesticideInvert_ng.g ~ PercentAg,
+#           data = site_data_wetland,
+#           na.action = na.omit)
+# 
+# summary(m10)
+# 
+# ggplot(site_data_wetland, aes(y = PesticideInvert_ng.g, x = PercentAg)) +
+#      my_theme + geom_point() + geom_smooth(method = "lm")
+# 
+# # worse fit
+# model.conc <- psem(m1, m2, m3, m4, m10)
+# summary(model.conc, conserve = TRUE)
 
   
-# pectoral muscle
- m6 <- lm(Standardized.Pec ~ Biomass + MigStatus + PercentAg + Season +
-    PlasmaDetection + time_hours + EnvDetection,
-    na.action = na.omit,
-    data = full)
+#---
+  
+# ...pectoral muscle model ----
+m6 <- lm(Standardized.Pec ~ Biomass + MigStatus + PercentAg + Season +
+        PlasmaDetection + time_hours + EnvDetection,
+        na.action = na.omit,
+        data = full)
+  
+# view individual relationships
+# no clear relationships
+# ggplot(full, aes(x = as.factor(EnvDetection), y = Standardized.Pec)) + geom_point() +
+#    geom_smooth(method = "lm", se = TRUE, color = "blue", size = 1) +
+#     geom_hline(yintercept = 0, linetype = "dashed", color = "red",
+#                size = 1) + my_theme
+  
+  
+#---
+  
+# ...fat model ISSUES WITH MODEL DIAGNOSTICS AND RIGHT SKEWED DATA ----
+# m7 <- lm(Fat ~ Biomass + MigStatus + PercentAg + Season +
+#          PlasmaDetection + time_hours + EnvDetection,
+#          na.action = na.omit,
+#          data = full)
+  
+# view individual relationships
+# higher fat in migrants
+# lower fat in spring
+# lower fat in birds with plasma detections (but there's a correlation with season)
+# ggplot(full, aes(x = time_hours,  y = Fat)) + geom_point() +
+#     geom_smooth(method = "lm", se = TRUE, color = "blue", size = 1) + my_theme
+  
+#---
+  
+# ...uric acid model  ----
+# m7 <- lm(Uric ~ Biomass + MigStatus + PercentAg + Season +
+#           PlasmaDetection + time_hours + BCI,
+#           na.action = na.omit,
+#           data = full)
+#   
+# removed because it forces new missing paths that don't make any sense
 
-# run piecewise SEM ----
+#------------------------------------------------------------------------------#
+#                            run piecewise SEMs                             ----                        
+#------------------------------------------------------------------------------# 
 
-model <- psem(m1, m2, m3, m4, m5, m6)
-summary(model, conserve = TRUE)
-# print(model)
+# FINAL SEM --------------------------------------------------------------------
+# BCI as primary body condition index (BEST & SIMPLEST MODEL)                  #  
+model.BCI <- psem(m1, m2, m3, m4, m5)
+summary(model.BCI, conserve = TRUE)
+# Fisher's C = 19.926 with P=value = 0.588 and on 22 degrees of freedom
+# AIC 264.024
+#------------------------------------------------------------------------------#
 
+# Standardized pectoral muscle size as primary body condition index
+# m4 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#             PlasmaDetection + time_hours + Standardized.Pec + EnvDetection,
+#           family = gaussian(),
+#           data = full,
+#           na.action = na.omit)
+# 
+# model.Pec <- psem(m1, m2, m4, m5, m6)
+# summary(model.Pec, conserve = TRUE)
+# # Fisher's C = 218.88 with P-value = 0 and on 16 degrees of freedom
+# # AIC 313.507
+# # missing paths that don't make sense (except biomass ~ envdetection but 
+# # we know apriori that relationship is not significant)
+# 
+  
+  
+# # BCI and Standardized Pectoral Muscle in same model
+# m3 <- lm(BCI ~ Biomass + PercentAg + PlasmaDetection +
+#            time_hours + Standardized.Pec,
+#          data = full,
+#          na.action = na.omit)
+# 
+# m4 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#             PlasmaDetection + time_hours + BCI + Standardized.Pec +
+#             EnvDetection,
+#           family = gaussian(),
+#           data = full,
+#           na.action = na.omit)
+# 
+# model.BCIandPec <- psem(m1, m2, m3, m4, m5, m6)
+# summary(model.BCIandPec, conserve = TRUE)
+# Fisher's C = 225.564 with P-value = 0 and on 22 degrees of freedom
+# AIC 229.842
+# lots of missing paths that don't make sense
+  
+  
+# Model that also includes uric acid 
+# model.BCIandUric <- psem(m1, m2, m3, m4, m5, m7)
+# summary(model.BCIandUric, conserve = TRUE)
+# lots of missing paths that don't make sense, brought in new correlations
+# extremely high AIC (1306.766)
 
 #------------------------------------------------------------------------------#
 #                             model diagnostics                             ----                        
@@ -555,23 +651,39 @@ plotResiduals(simulationOutput, form = model.frame(m4)$Season) # good
 plotResiduals(simulationOutput, form = model.frame(m4)$EnvDetection) # good
 plotResiduals(simulationOutput, form = model.frame(m4)$BCI) # good
 
-
-# m5 --- GOOD, no violations
-simulationOutput <- simulateResiduals(fittedModel = m6) 
-plot(simulationOutput)
-testDispersion(m5) 
-testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
-
-plotResiduals(simulationOutput, form = model.frame(m5)$PercentAg) # good
-plotResiduals(simulationOutput, form = model.frame(m5)$DaysSinceLastPrecipitation_5mm) # good
-plotResiduals(simulationOutput, form = model.frame(m5)$SPEI) # good
-plotResiduals(simulationOutput, form = model.frame(m5)$time_hours) # good
-
 # env detection model (DHARMa diagnostics unreliable with effect size of 11)
 plot(residuals(m5, type = "deviance") ~ fitted(m5))
 abline(h = 0, col = "red") # reasonable fit
 
+# m6 --- GOOD, no severe violations overall
+simulationOutput <- simulateResiduals(fittedModel = m6) 
+plot(simulationOutput)
+testDispersion(m6) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) 
+
+plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$Biomass) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$MigStatus) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$time_hours) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$Season) # some pattern
+plotResiduals(simulationOutput, form = model.frame(m6)$PlasmaDetection) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$EnvDetection) # good
 
 
+# m7 --- GOOD, no violations
+simulationOutput <- simulateResiduals(fittedModel = m7) 
+plot(simulationOutput)
+testDispersion(m7) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) 
+
+plotResiduals(simulationOutput, form = model.frame(m7)$PercentAg) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$Biomass) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$MigStatus) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$time_hours) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$Season) # some pattern
+plotResiduals(simulationOutput, form = model.frame(m7)$PlasmaDetection) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$EnvDetection) # good
