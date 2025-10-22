@@ -173,7 +173,7 @@ site_data <- leye.2023 %>%
   distinct(Site, Biomass, PercentAg)
 
 #### ...final biomass model----
-m1 <- lm(Biomass ~ PercentAg, data = site_data)
+m1 <- lm(log(Biomass) ~ PercentAg, data = site_data)
 
 # # gamma model did not converge...
 # m1 <- lm(Biomass ~ PercentAg, data = site_data)
@@ -199,10 +199,10 @@ m1 <- lm(Biomass ~ PercentAg, data = site_data)
 
 # model with complete dataset -- SPEI removed because only 1 year of data
 #### final plasma detection model ----
-m2 <- glm(PlasmaDetection ~ PercentAg + EnvDetection + time_hours,
-          data = leye.2023,
-          na.action = na.omit,
-          family = binomial(link = "logit"))
+# m2 <- glm(PlasmaDetection ~ PercentAg + EnvDetection + Julian,
+#           data = leye.2023,
+#           na.action = na.omit,
+#           family = binomial(link = "logit"))
 
 # summary(m2)
 
@@ -210,9 +210,9 @@ m2 <- glm(PlasmaDetection ~ PercentAg + EnvDetection + time_hours,
 
 # ...body condition model ----
 #### ...final body condition index model ----
-m3 <- lm(BCI ~ Biomass + PercentAg + PlasmaDetection + Julian,
+m3 <- lm(BCI ~ Biomass + PercentAg + EnvDetection,
          data = leye.2023,
-         na.action = na.omit)
+         na.action = na.omit) 
 
 # summary(m3)
 
@@ -229,7 +229,7 @@ m3 <- lm(BCI ~ Biomass + PercentAg + PlasmaDetection + Julian,
 # extract one row per site to avoid pseudoreplication in analysis (n = 6 wetlands)
 site_data_wetland <- leye.2023 %>%
   distinct(PercentAg, AnnualSnowfall_in,
-           DaysSinceLastPrecipitation_5mm, EnvDetection)
+           DaysSinceLastPrecipitation_5mm, EnvDetection, Biomass)
 
 #  model with complete dataset with main variable of interest (PercentAg)
 #### ...final environmental detection model ----
@@ -243,8 +243,11 @@ m4 <- glm(EnvDetection ~ PercentAg,
 # ...fattening index (FI) model ----
 
 #### ...final fattening index model ----
-m5 <- lm(FatteningIndex ~ time_hours + log(Biomass) + PercentAg + BCI,
+m5 <- glm(FatteningIndex ~ time_hours + log(Biomass) + PercentAg + EnvDetection,
         data = leye.2023)
+
+m5 <- glm(FatteningIndex ~ time_hours + BCI + Biomass + PercentAg,
+          data = leye.2023)
 
 # cyclical transformation? sin and cos not significant and psem doesn't support
 # m <- lm(FatteningIndex ~ time_hours +
@@ -310,12 +313,17 @@ m5 <- lm(FatteningIndex ~ time_hours + log(Biomass) + PercentAg + BCI,
 
 # # examine relationships
 # # negative effect of % cropland on LEYE fattening index
-# ggplot(leye.2023, aes(x = PercentAg, y = FatteningIndex)) + geom_point() +
-# my_theme
-# 
+ggplot(leye.2023, aes(x = PercentAg, y = FatteningIndex)) + geom_point() +
+ my_theme + geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(x = "% Surrounding Cropland",
+         y = "Lesser Yellowlegs Fattening Index")
+#
+
 # # lower fattening index in wetlands with higher invert biomass
-# ggplot(leye.2023, aes(x = Biomass, y = FatteningIndex)) + geom_point() +
-#    my_theme + geom_hline(yintercept = 0, color = "red")
+ggplot(leye.2023, aes(x = Biomass, y = FatteningIndex)) + geom_point() +
+     my_theme + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + 
+  labs(x = "Biomass (g)",
+       y = "Lesser Yellowlegs Fattening Index")
 
 # 
 # ggplot(leye.2023, aes(x = as.factor(PlasmaDetection), y = FatteningIndex)) + 
@@ -327,10 +335,10 @@ m5 <- lm(FatteningIndex ~ time_hours + log(Biomass) + PercentAg + BCI,
 # what if i removed outlier? effect is still trending negative but no longer sign.
 # leye.2023.or <- subset(leye.2023, Biomass < 3)
 # m <- lm(FatteningIndex ~ Biomass + PercentAg + time_hours + 
-#            PlasmaDetection,
-#          data = leye.2023.or,
-#          na.action = na.omit)
-# 
+#           PlasmaDetection,
+#           data = leye.2023.or,
+#           na.action = na.omit)
+ 
 # ggplot(leye.2023.or, aes(x = Biomass, y = FatteningIndex)) + geom_point()
 # 
 # summary(m)
@@ -340,23 +348,120 @@ m5 <- lm(FatteningIndex ~ time_hours + log(Biomass) + PercentAg + BCI,
 #                            run piecewise SEMs                             ----                        
 #------------------------------------------------------------------------------# 
 
+# BCI and FI together
+m1
+
 model <- psem(m1,m2,m3,m4,m5)
 summary(model, conserve = TRUE)
+
+
+# BCI alone
+model.BCI <- psem(m1,m3,m4)
+summary(model.BCI, conserve = TRUE)
+
+# FI alone
+model.FI <- psem(m1,m4,m5)
+summary(model.FI, conserve = TRUE) # lots of missing paths arise
+
+
+# FI simplified pt. 1
+m1 <- lm(log(Biomass) ~ PercentAg, data = site_data_wetland)
+m2 <- lm(FatteningIndex ~ log(Biomass) + PercentAg + time_hours,
+          data = leye.2023)
+
+
+model.FI1 <- psem(m1,m2)
+summary(model.FI1, conserve = TRUE)
+
+# FI simplified pt. 2
+m1 <- lm(log(Biomass) ~ PercentAg, data = site_data_wetland)
+m2 <- lm(FatteningIndex ~ log(Biomass) + time_hours + PercentAg,
+         data = leye.2023)
+
+model.FI2 <- psem(m1,m2)
+summary(model.FI2, conserve = TRUE)
+
+
+
 
 #------------------------------------------------------------------------------#
 #                            model diagnostics                              ----                        
 #------------------------------------------------------------------------------# 
 
 # m5 ISSUES ----
-simulationOutput <- simulateResiduals(fittedModel = m) 
+simulationOutput <- simulateResiduals(fittedModel = m2) 
 plot(simulationOutput)
-testDispersion(m) 
+testDispersion(m2) 
 testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
 testQuantiles(simulationOutput) 
 
-plotResiduals(simulationOutput, form = model.frame(m)$PercentAg) # pattern
-plotResiduals(simulationOutput, form = model.frame(m)$PlasmaDetection) # good
-plotResiduals(simulationOutput, form = model.frame(m5)$time_hours) # pattern
-plotResiduals(simulationOutput, form = model.frame(m5)$Biomass) # pattern
+plotResiduals(simulationOutput, form = model.frame(m2)$PercentAg) # pattern
+plotResiduals(simulationOutput, form = model.frame(m2)$time_hours) # pattern
+plotResiduals(simulationOutput, form = model.frame(m2)$Biomass) # pattern
 plotResiduals(simulationOutput, form = model.frame(m5)$BCI) # pattern
+
+
+
+
+#------------------------------------------------------------------------------#
+#                            run piecewise SEMs                             ----                        
+#------------------------------------------------------------------------------# 
+
+# SEM 1
+
+# extract one row per site to avoid pseudoreplication in analysis (n = 6 wetlands)
+site_data <- leye.2023 %>%
+  distinct(Site, Biomass, PercentAg, EnvDetection, Julian)
+
+m1 <- lm(log(Biomass) ~ PercentAg, data = site_data)
+
+# ggplot(site_data, aes(x = PercentAg, y = Biomass)) + geom_point() + my_theme
+
+m2 <- lm(FatteningIndex ~ PercentAg + log(Biomass) + time_hours, 
+         data = leye.2023)
+
+model.FI1 <- psem(m1,m2)
+summary(model.FI1, conserve = TRUE)
+
+# SEM 2
+
+
+m1 <- lm(log(Biomass) ~ EnvDetection, data = site_data)
+
+# ggplot(site_data, aes(x = PercentAg, y = Biomass)) + geom_point() + my_theme
+
+m2 <- lm(FatteningIndex ~ EnvDetection + log(Biomass) + time_hours, 
+         data = leye.2023)
+
+model.FI2 <- psem(m1,m2)
+summary(model.FI2, conserve = TRUE)
+
+
+# SEM 3
+
+
+m1 <- lm(log(Biomass) ~ PercentAg, data = site_data)
+
+# ggplot(site_data, aes(x = PercentAg, y = Biomass)) + geom_point() + my_theme
+
+m2 <- lm(BCI ~ PercentAg + log(Biomass) + Julian, 
+         data = leye.2023)
+
+model.FI2 <- psem(m1,m2)
+summary(model.FI2, conserve = TRUE)
+
+# SEM 4
+
+
+m1 <- lm(log(Biomass) ~ EnvDetection, data = site_data)
+
+# ggplot(site_data, aes(x = PercentAg, y = Biomass)) + geom_point() + my_theme
+
+m2 <- lm(BCI ~ EnvDetection + log(Biomass) + Julian, 
+         data = leye.2023)
+
+model.FI2 <- psem(m1,m2)
+summary(model.FI2, conserve = TRUE)
+
+
