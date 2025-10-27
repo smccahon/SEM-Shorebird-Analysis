@@ -1,7 +1,8 @@
 #----------------------------------------#
 #           SEM Model Building           #
+#          Full Dataset Overlap          #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 10/21/2025          #
+#         Modified on 10/27/2025         #
 #----------------------------------------#
 
 # load packages
@@ -505,10 +506,10 @@ m5 <- glm(EnvDetection ~ PercentAg,
 #---
   
 # ...pectoral muscle model ----
-m6 <- lm(Standardized.Pec ~ Biomass + MigStatus + PercentAg + Season +
-        PlasmaDetection + time_hours + EnvDetection,
-        na.action = na.omit,
-        data = full)
+# m6 <- lm(Standardized.Pec ~ Biomass + MigStatus + PercentAg + Season +
+#         PlasmaDetection + time_hours + EnvDetection,
+#         na.action = na.omit,
+#         data = full)
   
 # view individual relationships
 # no clear relationships
@@ -656,34 +657,34 @@ plot(residuals(m5, type = "deviance") ~ fitted(m5))
 abline(h = 0, col = "red") # reasonable fit
 
 # m6 --- GOOD, no severe violations overall
-simulationOutput <- simulateResiduals(fittedModel = m6) 
-plot(simulationOutput)
-testDispersion(m6) 
-testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
-
-plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg) # good
-plotResiduals(simulationOutput, form = model.frame(m6)$Biomass) # good
-plotResiduals(simulationOutput, form = model.frame(m6)$MigStatus) # good
-plotResiduals(simulationOutput, form = model.frame(m6)$time_hours) # good
-plotResiduals(simulationOutput, form = model.frame(m6)$Season) # some pattern
-plotResiduals(simulationOutput, form = model.frame(m6)$PlasmaDetection) # good
-plotResiduals(simulationOutput, form = model.frame(m6)$EnvDetection) # good
-
-
-# m7 --- GOOD, no violations
-simulationOutput <- simulateResiduals(fittedModel = m7) 
-plot(simulationOutput)
-testDispersion(m7) 
-testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
-
-plotResiduals(simulationOutput, form = model.frame(m7)$PercentAg) # good
-plotResiduals(simulationOutput, form = model.frame(m7)$Biomass) # good
-plotResiduals(simulationOutput, form = model.frame(m7)$MigStatus) # good
-plotResiduals(simulationOutput, form = model.frame(m7)$time_hours) # good
-plotResiduals(simulationOutput, form = model.frame(m7)$Season) # some pattern
-plotResiduals(simulationOutput, form = model.frame(m7)$PlasmaDetection) # good
-plotResiduals(simulationOutput, form = model.frame(m7)$EnvDetection) # good
+# simulationOutput <- simulateResiduals(fittedModel = m6) 
+# plot(simulationOutput)
+# testDispersion(m6) 
+# testUniformity(simulationOutput)
+# testOutliers(simulationOutput) 
+# testQuantiles(simulationOutput) 
+# 
+# plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg) # good
+# plotResiduals(simulationOutput, form = model.frame(m6)$Biomass) # good
+# plotResiduals(simulationOutput, form = model.frame(m6)$MigStatus) # good
+# plotResiduals(simulationOutput, form = model.frame(m6)$time_hours) # good
+# plotResiduals(simulationOutput, form = model.frame(m6)$Season) # some pattern
+# plotResiduals(simulationOutput, form = model.frame(m6)$PlasmaDetection) # good
+# plotResiduals(simulationOutput, form = model.frame(m6)$EnvDetection) # good
+# 
+# 
+# # m7 --- GOOD, no violations
+# simulationOutput <- simulateResiduals(fittedModel = m7) 
+# plot(simulationOutput)
+# testDispersion(m7) 
+# testUniformity(simulationOutput)
+# testOutliers(simulationOutput) 
+# testQuantiles(simulationOutput) 
+# 
+# plotResiduals(simulationOutput, form = model.frame(m7)$PercentAg) # good
+# plotResiduals(simulationOutput, form = model.frame(m7)$Biomass) # good
+# plotResiduals(simulationOutput, form = model.frame(m7)$MigStatus) # good
+# plotResiduals(simulationOutput, form = model.frame(m7)$time_hours) # good
+# plotResiduals(simulationOutput, form = model.frame(m7)$Season) # some pattern
+# plotResiduals(simulationOutput, form = model.frame(m7)$PlasmaDetection) # good
+# plotResiduals(simulationOutput, form = model.frame(m7)$EnvDetection) # good

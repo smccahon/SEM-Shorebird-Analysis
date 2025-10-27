@@ -10,6 +10,7 @@ library(purrr)
 library(lme4)
 library(dplyr)
 library(AICcmodavg)
+library(lubridate)
 
 
 # load data
@@ -47,8 +48,7 @@ birds$formatted_time <- format(as.POSIXct(birds$seconds_since_midnight,
                                "%H:%M")
 
 # fix numeric instability issue in SEM modeling
-birds$time_hours <- birds$seconds_since_midnight / 3600 
-
+birds$time_hours.test <- birds$seconds_since_midnight / 3600 
 
 ### ...create body condition index (accounting for structural size ) -----------
 
@@ -462,6 +462,7 @@ write.csv(full_cleaned, "cleaned_data/full_data_cleaned_2025-10-14.csv",
 #------------------------------------------------------------------------------#
 #                  Lesser Yellowlegs Dataset Preparation (Full)             ----                        
 #------------------------------------------------------------------------------#  
+
 
 ### ...standardize time to something more simple -------------------------------
 leye$Time <- strptime(leye$Time, format = "%H:%M")

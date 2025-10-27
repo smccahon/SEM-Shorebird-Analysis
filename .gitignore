@@ -3,7 +3,8 @@ resources/
 original_data/
 cleaned_data/
 notes/
-/plots
+path_diagrams/
+meetings/
 .Rhistory
 *.docx
 *.jpg

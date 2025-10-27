@@ -1,7 +1,7 @@
-This repository includes code for Shelby McCahon's structural equation modeling analysis to better understand the direct and indirect effects of agriculture and drought on shorebird body condition and prey availability in the Prairie Pothole Region. Folders, R scripts, and descriptions for files are listed below.
+This repository includes code and notes for Shelby McCahon's structural equation modeling analysis to better understand the direct and indirect effects of agriculture on shorebird body condition and prey availability in the Prairie Pothole Region. Folders, R scripts, and descriptions for files are listed below.
 
 Date Created: August 12th, 2025
-Last Date Modified: September 16th, 2025
+Last Date Modified: October 23rd, 2025
 
 Folders and descriptions:
 1. cleaned_data (prepped files for analysis)
