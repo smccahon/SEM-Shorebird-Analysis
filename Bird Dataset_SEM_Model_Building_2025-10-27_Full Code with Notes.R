@@ -2,7 +2,7 @@
 #           SEM Model Building            #
 #   Drivers of Shorebird Body Condition   #
 # Created by Shelby McCahon on 10/27/2025 #
-#         Modified on 10/27/2025          #
+#         Modified on 10/29/2025          #
 #-----------------------------------------#
 
 # load packages
@@ -31,6 +31,7 @@ my_theme <- theme_classic() + theme(
   axis.text.x = element_text(size = 18),
   axis.text.y = element_text(size = 18))
 
+options(tibble.print_max = Inf)
 
 #------------------------------------------------------------------------------#
 #                        convert factors to numeric                         ----                        
@@ -75,23 +76,55 @@ birds <- birds %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
+# Only include species with at least three individuals
+birds <- birds %>% 
+  group_by(Species) %>% 
+  filter(n() >= 3) %>% 
+  ungroup()
+
+# add a 1 to each value of Fat to avoid zeros (gamma can now be used)
+# birds <- birds %>% 
+#   mutate(Fat = Fat + 0.001)
+
 # extract one row per site to avoid pseudoreplication in analysis (n = 24 wetlands)
 site_data <- birds %>%
   distinct(Site, SPEI, PercentAg, Season, EnvDetection)
 
-# no missing data in body condition:
-birds.c <- birds %>%
-  filter(complete.cases(BCI, Fat, PecSizeBest, PlasmaDetection))
+# no missing data in body condition (this allows us to use correlated errors)
+# issue is, this brings sample size down to 80 birds...i get some diff results...
+# birds.c <- birds %>%
+#   filter(complete.cases(BCI.NoEvent, Fat, PecSizeBest, PlasmaDetection, 
+#                         FatteningIndex, Standardized.Pec.NoEvent, Uric))
 
 
 #------------------------------------------------------------------------------#
 #         fit individual models to full dataset (structural equations)      ----                        
 #------------------------------------------------------------------------------# 
 
+## ULTIMATELY DECIDED TO INCLUDE RANDOM EFFECTS of SPECIES IN PLASMA DETECTION,
+## FATTENING INDEX, AND URIC ACID MODELS
+## excluding random effects made some nonsensical independence claims sign.
+## and the only way to exclude those is to use a completely reduced dataset
+## with no missing data, which would bring sample size down to 79
+## There are no random effects of species in body condition index or 
+## pectoral muscle size index because size and species is already accounted
+## for in the residual analysis (log(Mass) ~ log(Wing) + Species)
+
 # ...wetland pesticide detection model ----
 
-m1 <- glm(EnvDetection ~ PercentAg + SPEI + Season, data = site_data, 
+# removed season to avoid overfitting the data
+# model without season is also preferred (AICcwt = 0.84), even though
+# that claim is significant in dSEP test
+m1 <- glm(EnvDetection ~ PercentAg + SPEI, data = site_data, 
           family = "binomial")
+
+# m2 <- glm(EnvDetection ~ PercentAg + SPEI + Season, data = site_data, 
+#            family = "binomial")
+#  
+#  model_names <- paste0("m", 1:2)
+#  models <- mget(model_names)
+#  aictab(models, modnames = model_names)
+
 
 # view relationships
 # some relationship apparent
@@ -107,35 +140,112 @@ m1 <- glm(EnvDetection ~ PercentAg + SPEI + Season, data = site_data,
 # julian is a better fit than season (AICc wt = 0.81), but I used season
 # for consistency with wetland pesticide detection model. Julian has high
 # correlation with Season anyways (r = 0.95)
-m2 <- glm(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
-            MigStatus,
-          data = birds.c, family = "binomial")
+# is random effect needed? no (AICc wt in model without random effect = 0.59)
+# but there is enough variance where it could be necessary
+
+# WITHOUT RANDOM EFFECT
+# m2 <- glm(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+#                 MigStatus,
+#               data = birds, family = "binomial")
+
+# 
+# # WITH RANDOM EFFECT
+m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+             MigStatus + (1|Species),
+           data = birds, family = "binomial")
+# 
+# # WITHOUT RANDOM EFFECT
+# m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+#                  MigStatus,
+#                data = birds, family = "binomial")
+ 
+ 
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
+
+# random effect of species needed? no, but results differ...
+# m1 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+#                 MigStatus + (1|Species),
+#               data = birds, family = "binomial")
+# 
+# m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+#                 MigStatus,
+#               data = birds, family = "binomial")
+# 
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
 
 # ...body condition index model ----
 # site as a random effect caused model to fail to converge
 # model explains almost nothing so you get an error (but model is still valid)
-m3 <- lm(BCI ~ time_hours + PlasmaDetection + SPEI + PercentAg,
-         data = birds.c)
+# no random effect of species because species is already considered in 
+# residual analysis (log(Mass)~log(Wing) + Species)
 
+m3 <- lm(BCI.NoEvent ~ time_hours + PlasmaDetection + SPEI + PercentAg + Season,
+         data = birds)
 
 # ...fattening index model ----
 # species performs better than migratory status alone (AICc wt = 0.96)
 # species also performs better than mig. status + (1|Species) (wt = 0.80)
 # issue is, I can't include species as a factor in SEM
 # best I can do is species as a random effect and migratory status as fixed
-m4 <- glmmTMB(FatteningIndex ~ BCI + MigStatus + Season + SPEI + PercentAg +
-           time_hours + PlasmaDetection + (1|Species), data = birds.c)
+# effect of plasma detection on fattening index is still significant with
+# species as a random or fixed effect!
+
+# WITH RANDOM EFFECT
+m4 <- glmmTMB(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + 
+                PercentAg + time_hours + PlasmaDetection + EnvDetection + 
+                (1|Species), data = birds)
+
+# m4 <- lm(FatteningIndex ~ BCI.NoEvent + Season + SPEI + 
+#                 PercentAg + time_hours + PlasmaDetection + EnvDetection + 
+#                 Species, data = birds)
+
+# WITHOUT RANDOM EFFECT
+# m4 <- lm(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + PercentAg +
+#                  time_hours + PlasmaDetection + EnvDetection, data = birds)
+
+# random effect needed? YES (AICc wt = 0.92)
+m1 <- glmmTMB(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + PercentAg +
+                  time_hours + PlasmaDetection + EnvDetection + (1|Species), data = birds)
+#  
+#  m2 <- glmmTMB(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + PercentAg +
+#                   time_hours + PlasmaDetection + EnvDetection, data = birds)
+# #  
+#   model_names <- paste0("m", 1:2)
+#   models <- mget(model_names)
+#   aictab(models, modnames = model_names)
 
 
 # view Fattening Index ~ Plasma Detection
 # birds %>%
 #   filter(!is.na(PlasmaDetection) & !is.na(FatteningIndex)) %>%
-#   ggplot(aes(x = as.factor(PlasmaDetection), y = FatteningIndex)) +
-#   geom_boxplot() + geom_hline(yintercept = 0, linetype = "dashed",
+#   ggplot(aes(x = as.factor(PlasmaDetection), y = FatteningIndex,
+#              color = as.factor(MigStatus))) +
+#    geom_boxplot() + geom_hline(yintercept = 0, linetype = "dashed",
+#                                color = "red") +
+#    labs(x = "Plasma Neonic Detection",
+#         y = "Fattening Index") + 
+#   geom_point() +
+#    my_theme
+# 
+# # view Fattening Index ~ PercentAg
+# birds %>%
+#   filter(!is.na(PlasmaDetection) & !is.na(PercentAg)) %>%
+#   ggplot(aes(x = PercentAg, y = FatteningIndex)) +
+#   geom_hline(yintercept = 0, linetype = "dashed",
 #                               color = "red") +
-#   labs(x = "Plasma Neonic Detection",
+#   labs(x = "% Surrounding Cropland",
 #        y = "Fattening Index") + 
+#   geom_point() +
 #   my_theme
+# 
+# 
+# birds %>% select(FatteningIndex,Species)
+# 
+# cor(birds$Mass, birds$FatteningIndex, use = "complete") # low-moderate cor.
 
 # view Fattening Index ~ Species
 # there is variation within and across species
@@ -153,92 +263,112 @@ m4 <- glmmTMB(FatteningIndex ~ BCI + MigStatus + Season + SPEI + PercentAg +
 # summary(m4)
 
 # ...fat model ----
-# tried species as a random effect, 
-m5 <- glmmTMB(Fat ~ time_hours + MigStatus + PercentAg + Season + SPEI +
-                PlasmaDetection + (1|Species), data = birds.c)
+# can't get a good model fit...what to do with 0s?
+# results change quite a bit with the distribution
+# heavily right skewed
+# m5 <- glm(Fat ~ PercentAg + Season + SPEI +
+#                 PlasmaDetection + MigStatus, data = birds,
+#               family = Gamma(link = "log"))
+
+# # Deviance residuals vs fitted values
+# plot(m5$fitted.values, residuals(m5, type = "deviance"),
+#      xlab = "Fitted values", ylab = "Deviance residuals")
+# abline(h = 0, col = "red")
+# 
+# 
+
+# # view relationships
+# ggplot(birds, aes(x = SPEI, y = Fat, color = MigStatus)) + 
+#   geom_point() + my_theme
+# 
+# table(birds$Fat)
+# table(birds$MigStatus)
+# table(birds$Fat, birds$MigStatus) # a lot more migrants (more than double)
+# table(birds$Fat, birds$Season) # very low fat in spring...
+# table(birds$Fat, birds$PlasmaDetection)
+# 
+# # plot model
+# d <- expand.grid(PercentAg = mean(birds$PercentAg),
+#                  SPEI = seq(min(birds$SPEI),
+#                                  max(birds$SPEI),
+#                                  length = 1000),
+#                  MigStatus = unique(birds$MigStatus)) 
+# 
+# pred <- predict(m5, newdata = d, type = "link", se.fit = TRUE)
+# 
+# d$fit <- exp(pred$fit)
+# d$lwr <- exp(pred$fit - 1.96 * pred$se.fit)
+# d$upr <- exp(pred$fit + 1.96 * pred$se.fit)
+# 
+# ggplot(d, aes(x = SPEI, y = fit)) +
+#   geom_line(linewidth = 0.8) +
+#   geom_ribbon(aes(ymin = lwr, ymax = upr),
+#               alpha = 0.25, color = NA, show.legend = FALSE) +
+#   theme_classic() +
+#   labs(y = "Predicted Fat", x = "SPEI")
+
+# ...pectoral muscle size model ----
+# corrected for size and species -- random effect and mig. status not needed
+
+m6 <- lm(Standardized.Pec.NoEvent ~ time_hours + PercentAg + SPEI + 
+                Season + PlasmaDetection, 
+              data = birds)
+
+# model_names <- paste0("m", 6:7)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
 
 
-m6 <- glmmTMB(PecSizeBest ~ time_hours + MigStatus + PercentAg + Season + SPEI +
-                PlasmaDetection + (1|Species), data = birds.c)
+# ...uric acid level model ----
+# not enough variation for random effect, species was removed
+# migratory status is an important predictor --> keep
+# AICc favors model with migratory status and NO random effect of species
+# results don't differ much with or without random effect of species
+# keep random effect in for consistency with model (species is now always
+# accounted for)
 
+# WITH RANDOM EFFECT OF SPECIES
+m7 <- glmmTMB(Uric ~ time_hours + PercentAg + Season + SPEI +
+                PlasmaDetection + MigStatus + (1|Species), data = birds)
+# 
+# m7 <- glmmTMB(Uric ~ time_hours + PercentAg + Season + SPEI +
+#              PlasmaDetection + MigStatus, data = birds)
+# #  
+#   m8 <- glmmTMB(Uric ~ time_hours + MigStatus + PercentAg + Season + SPEI +
+#              PlasmaDetection + (1|Species), data = birds)
+# #  
+#   m9 <- glmmTMB(Uric ~ time_hours + PercentAg + Season + SPEI +
+#                   PlasmaDetection + (1|Species), data = birds)
+# #  
+#   model_names <- paste0("m", 7:9)
+#   models <- mget(model_names)
+#   aictab(models, modnames = model_names)
 
 #------------------------------------------------------------------------------#
 #                           run piecewise SEM                               ----                        
 #------------------------------------------------------------------------------# 
 
-
-# run piecewiseSEM (fattening index and BCI only)
-model <- psem(m1,m2,m3,m4)
-
-model <- psem(m1,m2,m3,m4)
+# run piecewiseSEM
+# not including fat due to model diagnostics issues
+model <- psem(m1,m2,m3,m4,m6,m7)
 summary(model, conserve = TRUE)
+# sem <- update(model, EnvDetection %~~% Uric)
 
-# run piecewiseSEM (add in fat)
-model <- psem(m1,m2,m3,m4,m5,
-              Fat %~~% BCI)
-summary(model, conserve = TRUE) # different number of rows...
-
-
-# run piecewiseSEM (add in pectoral muscle size)
-model <- psem(m1,m2,m3,m4,m6,
-              PecSizeBest %~~% BCI,
-              BCI %~~% MigStatus,
-              PecSizeBest %~~% FatteningIndex,
-              EnvDetection %~~% time_hours)
-summary(model, conserve = TRUE) # different number of rows...
-
-
+# summary(sem)
 
 # ...model comparison
-model_names <- paste0("m", 1:7)
-models <- mget(model_names)
-aictab(models, modnames = model_names)
-
-
-
-# Generate example data
-dat <- data.frame(x1 = runif(50),
-                  x2 = runif(50), y1 = runif(50),
-                  y2 = runif(50))
-# Create list of structural equations
-sem <- psem(
-  lm(y1 ~ x1 + x2, dat),
-  lm(y2 ~ y1 + x1, dat)
-)
-summary(sem)
-# Look at correlated error between x1 and x2
-# (exogenous)
-cerror(x1 %~~% x2, sem, dat)
-# Same as cor.test
-with(dat, cor.test(x1, x2))
-# Look at correlated error between x1 and y1
-# (endogenous)
-cerror(y1 %~~% x1, sem, dat)
-# Not the same as cor.test
-# (accounts for influence of x1 and x2 on y1)
-with(dat, cor.test(y1, x1))
-# Specify in psem
-sem <- update(sem, x1 %~~% y1)
-coefs(sem)
-
-
+# model_names <- paste0("m", 6:7)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
 
 #------------------------------------------------------------------------------#
 #                           model diagnostics                               ----                        
 #------------------------------------------------------------------------------# 
 
-# I think issues here are related to small sample size...
-# wetland pesticide detection model
-simulationOutput <- simulateResiduals(fittedModel = m1) # overall good
-plot(simulationOutput)
-testDispersion(m1) 
-testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) # pattern
-
-plotResiduals(simulationOutput, form = model.frame(m1)$PercentAg) # some pattern
-plotResiduals(simulationOutput, form = model.frame(m1)$Season) # good
-plotResiduals(simulationOutput, form = model.frame(m1)$SPEI) # some pattern
+# wetland pesticide detection model 
+# (DHARMa diagnostics unreliable with effect size of 11)
+plot(residuals(m1, type = "deviance") ~ fitted(m1))
+abline(h = 0, col = "red") # reasonable fit
 
 # plasma detection model --- all great, no patterns
 simulationOutput <- simulateResiduals(fittedModel = m2) 
@@ -250,7 +380,7 @@ testQuantiles(simulationOutput)
 
 plotResiduals(simulationOutput, form = model.frame(m2)$PercentAg) # good
 plotResiduals(simulationOutput, form = model.frame(m2)$MigStatus)  # good
-plotResiduals(simulationOutput, form = model.frame(m2)$EnvDetection)  # good
+plotResiduals(simulationOutput, form = model.frame(m2)$EnvDetection)  # some pattern
 plotResiduals(simulationOutput, form = model.frame(m2)$Season) # good
 plotResiduals(simulationOutput, form = model.frame(m2)$SPEI) # good
 
@@ -263,10 +393,9 @@ testOutliers(simulationOutput)
 testQuantiles(simulationOutput) 
 
 plotResiduals(simulationOutput, form = model.frame(m3)$PercentAg) # good
-plotResiduals(simulationOutput, form = model.frame(m3)$PlasmaDetection) # good
+plotResiduals(simulationOutput, form = model.frame(m3)$PlasmaDetection) # some pattern
 plotResiduals(simulationOutput, form = model.frame(m3)$time_hours)  # good
-plotResiduals(simulationOutput, form = model.frame(m3)$SPEI) # good
-
+plotResiduals(simulationOutput, form = model.frame(m3)$SPEI) # some pattern
 
 # fattening index model --- overall good, some pattern
 simulationOutput <- simulateResiduals(fittedModel = m4) 
@@ -274,14 +403,60 @@ plot(simulationOutput)
 testDispersion(m4) 
 testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
+testQuantiles(simulationOutput) # some pattern
 
 plotResiduals(simulationOutput, form = model.frame(m4)$PercentAg) # some pattern
 plotResiduals(simulationOutput, form = model.frame(m4)$PlasmaDetection) # good
-plotResiduals(simulationOutput, form = model.frame(m4)$MigStatus)  # good
-plotResiduals(simulationOutput, form = model.frame(m4)$time_hours)  # good
+plotResiduals(simulationOutput, form = model.frame(m4)$MigStatus)  # some pattern
+plotResiduals(simulationOutput, form = model.frame(m4)$time_hours)  # cyclical but okay
 plotResiduals(simulationOutput, form = model.frame(m4)$Season) # some pattern
-plotResiduals(simulationOutput, form = model.frame(m4)$BCI) # good
+plotResiduals(simulationOutput, form = model.frame(m4)$BCI.NoEvent) # good
 plotResiduals(simulationOutput, form = model.frame(m4)$SPEI) # some pattern
 
+plot(residuals(m4, type = "deviance") ~ fitted(m4))
+abline(h = 0, col = "red") # residuals look just fine though
+
+# fat model --- lots of issues: can't get a good model fit right now
+simulationOutput <- simulateResiduals(fittedModel = m5) 
+plot(simulationOutput)
+testDispersion(m5) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) 
+
+plotResiduals(simulationOutput, form = model.frame(m5)$PercentAg) # some pattern
+plotResiduals(simulationOutput, form = model.frame(m5)$PlasmaDetection) # bad
+plotResiduals(simulationOutput, form = model.frame(m5)$MigStatus)  # bad
+plotResiduals(simulationOutput, form = model.frame(m5)$time_hours)  # good
+plotResiduals(simulationOutput, form = model.frame(m5)$Season) # very bad
+plotResiduals(simulationOutput, form = model.frame(m5)$BCI) # good
+plotResiduals(simulationOutput, form = model.frame(m5)$SPEI) # some pattern
+
+# pectoral muscle model --- all good, no patterns
+simulationOutput <- simulateResiduals(fittedModel = m6) 
+plot(simulationOutput)
+testDispersion(m6) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) 
+
+plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg)
+plotResiduals(simulationOutput, form = model.frame(m6)$PlasmaDetection)
+plotResiduals(simulationOutput, form = model.frame(m6)$time_hours)  
+plotResiduals(simulationOutput, form = model.frame(m6)$SPEI)
+
+# uric acid model --- all good, no patterns
+simulationOutput <- simulateResiduals(fittedModel = m7) 
+plot(simulationOutput)
+testDispersion(m7) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) 
+
+plotResiduals(simulationOutput, form = model.frame(m7)$PercentAg) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$PlasmaDetection) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$time_hours) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$SPEI) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$MigStatus) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$Season) # good
 

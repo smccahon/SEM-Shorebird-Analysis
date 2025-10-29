@@ -48,7 +48,7 @@ birds$formatted_time <- format(as.POSIXct(birds$seconds_since_midnight,
                                "%H:%M")
 
 # fix numeric instability issue in SEM modeling
-birds$time_hours.test <- birds$seconds_since_midnight / 3600 
+birds$time_hours <- birds$seconds_since_midnight / 3600 
 
 ### ...create body condition index (accounting for structural size ) -----------
 
@@ -61,25 +61,28 @@ birds <- birds %>%
 m1 <- lm(log(Mass) ~ log(Wing) + Species, data = birds)
 
 # time-corrected
-m2 <- lm(log(Mass) ~ log(Wing) + Species + time_hours, data = birds)
-m3 <- lm(log(Mass) ~ log(Wing) + Species + Julian, data = birds)
-m4 <- lm(log(Mass) ~ log(Wing) + Species + Event, data = birds)
-m5 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Julian, data = birds)
-m6 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Event, data = birds)
-
-# model comparison
-model_names <- paste0("m", 1:6)
-
-models <- mget(model_names)
-
-aictab(models, modnames = model_names) # m4 is best
-
-# assess model fit
-plot(m4) # good
+# m2 <- lm(log(Mass) ~ log(Wing) + Species + time_hours, data = birds)
+# m3 <- lm(log(Mass) ~ log(Wing) + Species + Julian, data = birds)
+# m4 <- lm(log(Mass) ~ log(Wing) + Species + Event, data = birds)
+# m5 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Julian, data = birds)
+# m6 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Event, data = birds)
+# 
+# # model comparison
+# model_names <- paste0("m", 1:6)
+# 
+# models <- mget(model_names)
+# 
+# aictab(models, modnames = model_names) # m4 is best
+# 
+# # assess model fit
+# plot(m4) # good
 
 # extract residuals
+# birds <- birds %>%
+#   mutate(BCI = residuals(m4))
+
 birds <- birds %>%
-  mutate(BCI = residuals(m4))
+  mutate(BCI.NoEvent = residuals(m1))
 
 # plot data
 ggplot(birds, aes(x = Species, y = BCI)) + geom_boxplot() +
@@ -95,6 +98,64 @@ ggplot(birds, aes(x = Species, y = BCI)) + geom_boxplot() +
   geom_hline(linetype = "dashed", color = "red", yintercept = 0,
              size = 1)
 
+
+
+### ...create pectoral muscle index (accounting for structural size ) ----------
+
+# does this make any sense?
+# filter complete cases
+birds.pec <- birds %>%
+  filter(complete.cases(PecSizeBest, Wing))
+
+# invert so we can log
+birds.pec$PecSizeBest <- birds.pec$PecSizeBest * -1
+
+# fit the log-log linear regression model and compare model fit
+# species-corrected
+# m1 <- lm(log(PecSizeBest) ~ log(Wing) + Species + Event, data = birds.pec)
+# m2 <- lm(log(PecSizeBest) ~ log(Wing) * Species + Event, data = birds.pec)
+m3 <- lm(log(PecSizeBest) ~ log(Wing) + Species, data = birds.pec)
+
+# model comparison: is interaction with species needed? absolutely not
+# model_names <- paste0("m", 1:3)
+# 
+# models <- mget(model_names)
+# 
+# aictab(models, modnames = model_names) 
+# 
+# plot(m1) # good fit
+
+# extract residuals
+# birds.pec <- birds.pec %>%
+#   mutate(Standardized.Pec = residuals(m1))
+
+birds.pec <- birds.pec %>%
+  mutate(Standardized.Pec.NoEvent = residuals(m3))
+
+# plot data
+ggplot(birds, aes(x = Species, y = Standardized.Pec)) + geom_boxplot() +
+  geom_jitter() +
+  theme_classic() +
+  labs(x = NULL, y = "Relative Pectoral Muscle Size Index") +
+  theme(
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  ) +
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
+  geom_hline(linetype = "dashed", color = "red", yintercept = 0,
+             size = 1)
+
+# put back in final dataset
+birds <- birds %>%
+  left_join(
+    birds.pec %>%
+      select(Individual, Standardized.Pec.NoEvent),
+    by = "Individual"
+  )
+
+birds %>% select(Standardized.Pec.NoEvent, PecSizeBest)
 
 ### ...create fattening index with PCA -----------------------------------------
 # high tri and low beta for high fattening
@@ -140,13 +201,15 @@ cat("Correlation with Beta:", round(beta_cor, 3), "\n") # Should be negative
 birds_cleaned <- birds %>% 
   dplyr::select(Individual, Site, Event, Season, Age, Fat, PecSizeBest, Beta, Permanence, 
          NearestCropDistance_m, Max_Flock_Size,
-         PlasmaDetection, seconds_since_midnight, Species, PercentAg, BCI,
+         PlasmaDetection, seconds_since_midnight, Species, PercentAg,,
          Percent_Total_Veg, Julian, Mass, OverallNeonic,
          Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
          AnyDetection, MigStatus, AgCategory, SPEI, Sex, Tri, 
+         BCI.NoEvent, Standardized.Pec.NoEvent,
          Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
          InvertPesticideDetection, EnvDetection, FatteningIndex, time_hours,
-         AnnualSnowfall_in, PrecipitationAmount_7days, DaysSinceLastPrecipitation_5mm)
+         AnnualSnowfall_in, PrecipitationAmount_7days, 
+         DaysSinceLastPrecipitation_5mm)
 
 write.csv(birds_cleaned, "cleaned_data/shorebird_data_cleaned_2025-08-11.csv",
           row.names = FALSE)
@@ -271,32 +334,34 @@ full$time_hours <- full$seconds_since_midnight / 3600
 
 # does this make any sense?
 # filter complete cases
-full <- full %>%
+full.pec <- full %>%
   filter(complete.cases(PecSizeBest, Wing))
 
 # invert so we can log
-full$PecSizeBest <- full$PecSizeBest * -1
+full.pec$PecSizeBest <- full.pec$PecSizeBest * -1
 
 # fit the log-log linear regression model and compare model fit
 # species-corrected
-m1 <- lm(log(PecSizeBest) ~ log(Wing) * Species + Season, data = full)
-m2 <- lm(log(PecSizeBest) ~ log(Wing) + Species + Season, data = full)
+m3 <- lm(log(PecSizeBest) ~ log(Wing) + Species, data = full.pec)
 
-# model comparison: is interaction with species needed? absolutely not
-model_names <- paste0("m", 1:2)
-
-models <- mget(model_names)
-
-aictab(models, modnames = model_names) 
-
-plot(m1) # good fit
+# plot(m3) # good fit
 
 # extract residuals
+full.pec <- full.pec %>%
+  mutate(Standardized.Pec.NoEvent = residuals(m3))
+
+# put back in final dataset
 full <- full %>%
-  mutate(Standardized.Pec = residuals(m1))
+  left_join(
+    full.pec %>%
+      select(Individual, Standardized.Pec.NoEvent),
+    by = "Individual"
+  )
+
+full %>% select(Standardized.Pec.NoEvent, PecSizeBest, Wing)
 
 # plot data
-ggplot(full, aes(x = Species, y = Standardized.Pec)) + geom_boxplot() +
+ggplot(full, aes(x = Species, y = Standardized.Pec.NoEvent)) + geom_boxplot() +
   geom_jitter() +
   theme_classic() +
   labs(x = NULL, y = "Relative Pectoral Muscle Size Index") +
@@ -318,36 +383,34 @@ full <- full %>%
 
 # fit the log-log linear regression model and compare model fit
 # species-corrected
-m1 <- lm(log(Mass) ~ log(Wing) + Species + Season, data = full)
-m2 <- lm(log(Mass) ~ log(Wing) * Species + Season, data = full)
+m1 <- lm(log(Mass) ~ log(Wing) + Species, data = full)
 
 # model comparison: is interaction with species needed? absolutely not
-model_names <- paste0("m", 1:2)
-
-models <- mget(model_names)
-
-aictab(models, modnames = model_names) 
 
 # time-corrected
-m2 <- lm(log(Mass) ~ log(Wing) + Species + time_hours, data = full)
-m3 <- lm(log(Mass) ~ log(Wing) + Species + Julian, data = full)
-m4 <- lm(log(Mass) ~ log(Wing) + Species + Event, data = full)
-m5 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Julian, data = full)
-m6 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Event, data = full)
-
-# model comparison
-model_names <- paste0("m", 1:6)
-
-models <- mget(model_names)
-
-aictab(models, modnames = model_names) # m1 is best, but use m4 for consistency
-
-# assess model fit
-plot(m4) # good
+# m2 <- lm(log(Mass) ~ log(Wing) + Species + time_hours, data = full)
+# m3 <- lm(log(Mass) ~ log(Wing) + Species + Julian, data = full)
+# m4 <- lm(log(Mass) ~ log(Wing) + Species + Event, data = full)
+# m5 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Julian, data = full)
+# m6 <- lm(log(Mass) ~ log(Wing) + Species + time_hours + Event, data = full)
+# 
+# # model comparison
+# model_names <- paste0("m", 1:6)
+# 
+# models <- mget(model_names)
+# 
+# aictab(models, modnames = model_names) # m1 is best, but use m4 for consistency
+# 
+# # assess model fit
+# plot(m4) # good
+# 
+# # extract residuals
+# full <- full %>%
+#   mutate(BCI = residuals(m4))
 
 # extract residuals
-full <- full %>%
-  mutate(BCI = residuals(m4))
+ full <- full %>%
+   mutate(BCI.NoEvent = residuals(m1))
 
 # plot data
 ggplot(full, aes(x = Species, y = BCI)) + geom_boxplot() +
@@ -362,14 +425,6 @@ ggplot(full, aes(x = Species, y = BCI)) + geom_boxplot() +
   scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
   geom_hline(linetype = "dashed", color = "red", yintercept = 0,
              size = 1)
-
-# compare BCI and standardized pectoral muscle
-cor(full$BCI, full$Standardized.Pec)
-plot(full$BCI, full$Standardized.Pec)
-
-m <- lm(BCI ~ Standardized.Pec, data = full)
-summary(m)
-
 
 ### ...create fattening index with PCA -----------------------------------------
 # high tri and low beta for high fattening
@@ -445,7 +500,8 @@ full_cleaned <- full %>%
   dplyr::select(Individual, Site, Event, Season, Age, Fat, PecSizeBest, Beta, 
                 Permanence, PercentLocalVeg_50m,
                 NearestCropDistance_m, Max_Flock_Size,
-                PlasmaDetection, seconds_since_midnight, Species, PercentAg, BCI,
+                PlasmaDetection, seconds_since_midnight, Species, PercentAg, 
+                BCI.NoEvent,
                 Percent_Total_Veg, Julian, Mass, OverallNeonic,
                 Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
                 AnyDetection, MigStatus, AgCategory, SPEI, Sex, Tri, 
@@ -453,7 +509,7 @@ full_cleaned <- full %>%
                 Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
                 InvertPesticideDetection, EnvDetection, FatteningIndex, time_hours,
                 AnnualSnowfall_in, PrecipitationAmount_7days, 
-                DaysSinceLastPrecipitation_5mm, Standardized.Pec)
+                DaysSinceLastPrecipitation_5mm, Standardized.Pec.NoEvent)
 
 write.csv(full_cleaned, "cleaned_data/full_data_cleaned_2025-10-14.csv",
           row.names = FALSE)

@@ -554,6 +554,41 @@ model.BCI <- psem(m1, m2, m3, m4, m5)
 summary(model.BCI, conserve = TRUE)
 # Fisher's C = 19.926 with P=value = 0.588 and on 22 degrees of freedom
 # AIC 264.024
+
+
+# Create fake data
+set.seed(1)
+
+data <- data.frame(
+  x = runif(100),
+  y1 = runif(100),
+  y2 = rpois(100, 1),
+  y3 = runif(100)
+)
+
+# Create SEM using `psem`
+modelList <- psem(
+  lm(y1 ~ x, data),
+  glm(y2 ~ x, "poisson", data),
+  lm(y3 ~ y1 + y2, data),
+  data
+)
+
+# Run summary
+summary(modelList)
+
+# Address conflict using conserve = T
+summary(modelList, conserve = T)
+
+# Address conflict using direction = c()
+summary(modelList, direction = c("y2 <- y1"))
+
+# Address conflict using correlated errors
+modelList2 <- update(modelList, y2 %~~% y1)
+
+summary(modelList2)
+
+basisSet(model.BCI)
 #------------------------------------------------------------------------------#
 
 # Standardized pectoral muscle size as primary body condition index
