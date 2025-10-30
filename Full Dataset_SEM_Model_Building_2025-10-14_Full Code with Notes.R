@@ -2,7 +2,7 @@
 #           SEM Model Building           #
 #          Full Dataset Overlap          #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 10/27/2025         #
+#         Modified on 10/30/2025         #
 #----------------------------------------#
 
 # load packages
@@ -47,6 +47,7 @@ my_theme <- theme_classic() + theme(
   axis.text.x = element_text(size = 18),
   axis.text.y = element_text(size = 18))
 
+options(tibble.print_max = Inf)
 
 #------------------------------------------------------------------------------#
 #                        convert factors to numeric                         ----                        
@@ -216,6 +217,23 @@ full <- full %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
+
+# use complete cases of linked variables (n = 114)
+full <- full %>%
+ filter(complete.cases(BCI.NoEvent, Standardized.Pec.NoEvent,
+                       PlasmaDetection))
+
+# Only include species with at least three individuals (n = 114)
+full <- full %>% 
+   group_by(Species) %>% 
+    filter(n() >= 3) %>% 
+    ungroup()
+
+# I've decided to model response body condition metrics as correlated errors, 
+# and not specify direction...otherwise I get spurious results (birds with 
+# smaller pectoral muscles are refueling faster?? but birds with more mass
+# are also refueling faster?)
+
 #------------------------------------------------------------------------------#
 #         fit individual models to full dataset (structural equations)      ----                        
 #------------------------------------------------------------------------------# 
@@ -235,7 +253,7 @@ full <- full %>%
 
 # extract one row per site to avoid pseudoreplication in analysis (n = 11 wetlands)
 site_data <- full %>%
-  distinct(Site, Biomass, PercentAg, Season)
+  distinct(Site, Biomass, PercentAg, Season, EnvDetection)
 
 # gamma distribution or log-transformation? We know with the full dataset that
 # gamma is a better fit so use this for consistency with other analysis
@@ -256,6 +274,14 @@ m1 <- glm(Biomass ~ PercentAg, data = site_data,
 # models <- mget(model_names)
 # aictab(models, modnames = model_names)
 
+# what about for envdetection? no, much worse
+# m1 <- glm(Biomass ~ PercentAg, data = site_data,
+#           family = Gamma(link = "log"))
+# 
+# m2 <- glm(Biomass ~ PercentAg + EnvDetection, data = site_data,
+#           family = Gamma(link = "log"))
+
+
 # view individual relationships
 # ggplot(site_data, aes(x = PercentAg, y = Biomass)) + 
 #  geom_point() + my_theme
@@ -275,13 +301,26 @@ m1 <- glm(Biomass ~ PercentAg, data = site_data,
 
 # model with complete dataset -- SPEI removed because only 1 year of data
   #### final plasma detection model ----
+
+# WITH RANDOM EFFECT OF SPECIES -- causing singular boundary fit error
+# variance ~ 0 
+  
+# glmmTMB (Failed to converge in SEM)
+ # m2 <- glmmTMB(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours + 
+ #              MigStatus + (1|Species),
+ #              data = full.3,
+ #              na.action = na.omit,
+ #              family = binomial(link = "logit"))
+  
+# no random effect
 m2 <- glm(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours + 
-             MigStatus,
-             data = full,
-             na.action = na.omit,
-             family = binomial(link = "logit"))
+                  MigStatus,
+                data = full,
+                na.action = na.omit,
+                family = binomial(link = "logit"))
   
-  
+# glmer caused boundary (singular) fit warning
+
 # season or julian? season is a better fit...Julian may make more sense but
 # use season for consistency in SEM. either way, effect is not significant.
 # m1 <- glm(PlasmaDetection ~ PercentAg + Julian + EnvDetection + time_hours + 
@@ -318,24 +357,24 @@ m2 <- glm(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours +
 # summary(m2)
    
 # is random effect of site needed or helpful? yes for this model. simpler 
-# model without random effect preferred though
-# m1 <- glmmTMB(PlasmaDetection ~ PercentAg + Julian + EnvDetection + time_hours + 
-#                MigStatus,
-#              data = full,
-#              na.action = na.omit,
-#              family = binomial(link = "logit")) # preferred by AIC
-#    
-# m2 <- glmmTMB(PlasmaDetection ~ PercentAg + Julian + EnvDetection + time_hours + 
+# model without random effect preferred though (AICc wt = 0.67)
+# m1 <- glmmTMB(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours + 
+#                 MigStatus,
+#               data = full,
+#               na.action = na.omit,
+#               family = binomial(link = "logit")) # preferred by AIC
+#     
+# m2 <- glmmTMB(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours + 
 #                    MigStatus + (1|Site),
-#                  data = full,
-#                  na.action = na.omit,
-#                  family = binomial(link = "logit")) # preferred by AIC
-# 
-# summary(m2) # variance is 0.2674, sd = 0.5171
-#    
- # model_names <- paste0("m", 1:2)
- # models <- mget(model_names)
- # aictab(models, modnames = model_names)
+#                   data = full,
+#                   na.action = na.omit,
+#                   family = binomial(link = "logit")) # preferred by AIC
+#  
+# summary(m2) # variance is 0.2165, sd = 0.4653
+# #    
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
   
 # view individual relationships
 # ggplot(birds, aes(y = time_hours, x = as.factor(PlasmaDetection))) + 
@@ -352,10 +391,31 @@ m2 <- glm(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours +
 # don't need to account for season as a predictor because it's already accounted for in BCI
 
 #### ...final body condition index model ----
-m3 <- lm(BCI ~ Biomass + PercentAg + PlasmaDetection +
-           time_hours,
-           data = full,
-           na.action = na.omit)
+m3 <- lm(BCI.NoEvent ~ Biomass + PercentAg + PlasmaDetection +
+         time_hours + Season,
+         data = full,
+         na.action = na.omit)
+  
+# does including fattening index here improve model fit?
+# is the relationship BCI -> FI or FI -> BCI?
+# Including fattening index in this model was significantly WORSE!
+# likely not FI -> BCI
+# m1 <- lm(BCI.NoEvent ~ Biomass + PercentAg + PlasmaDetection +
+#            time_hours + Season + Standardized.Pec.NoEvent +
+#            FatteningIndex,
+#            data = full,
+#            na.action = na.omit)
+#   
+# m2 <- lm(BCI.NoEvent ~ Biomass + PercentAg + PlasmaDetection +
+#            time_hours + Season + Standardized.Pec.NoEvent,
+#            data = full,
+#            na.action = na.omit)
+# 
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
+
+  
 
 # view individual relationships
 # no clear relationships with BCI
@@ -389,13 +449,79 @@ m3 <- lm(BCI ~ Biomass + PercentAg + PlasmaDetection +
 # ...fattening index (FI) model ----
 
 #### ...final fattening index model ----
-m4 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
-          PlasmaDetection + time_hours + BCI + EnvDetection,
-          family = gaussian(),
-          data = full,
-          na.action = na.omit)
+  
+# WITH RANDOM EFFECT
+
+# variance = 0.1227
+m4 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+                 PlasmaDetection + time_hours + EnvDetection + (1|Species),
+                data = full,
+                family = gaussian(),
+                 na.action = na.omit)
+  
+# does including pectoral muscle index improve model fit? 
+# yes! but in a negative way?? 
+  
+# ggplot(full, aes(x = Standardized.Pec.NoEvent, y = FatteningIndex)) +
+#   geom_point() + geom_hline(yintercept = 0) + geom_smooth(method = "lm")
+# 
+# m <- glmmTMB(FatteningIndex ~ Standardized.Pec.NoEvent + BCI.NoEvent +
+#           (1|Species), data = full)
+
+# m1 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                  PlasmaDetection + time_hours + EnvDetection + BCI.NoEvent +
+#                 (1|Species),
+#                 data = full,
+#                 family = gaussian(),
+#                  na.action = na.omit)
+#   
+# m2 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                  PlasmaDetection + time_hours + EnvDetection + BCI.NoEvent +
+#                 (1|Species) + Standardized.Pec.NoEvent,
+#                 data = full,
+#                 family = gaussian(),
+#                  na.action = na.omit)
+# 
+# m2 <- lm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                 PlasmaDetection + time_hours + EnvDetection + BCI.NoEvent +
+#                 Standardized.Pec.NoEvent,
+#               data = full,
+#               na.action = na.omit)
+  
+# does including bci improve model fit? is it BCI -> FI or FI -> BCI
+# definitely BCI -> FI
+# AIC STRONGLY preferred model with FI ~ BCI
+# m1 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                 PlasmaDetection + time_hours + EnvDetection + (1|Species) +
+#                 BCI.NoEvent,
+#                 data = full,
+#                 family = gaussian(),
+#                 na.action = na.omit)
+  
+# m2 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                 PlasmaDetection + time_hours + EnvDetection + (1|Species),
+#               data = full,
+#               family = gaussian(),
+#               na.action = na.omit)
+# 
+# model_names <- paste0("m", 1:2)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
+
+
+
+# no random effect
+# m4 <- lm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                 PlasmaDetection + time_hours,
+#               data = full,
+#               na.action = na.omit)
 
   
+# m4 <- lmer(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                 PlasmaDetection + time_hours + (1|Species),
+#                 data = full.c, REML = FALSE,
+#                 na.action = na.omit)
+#   
 # season or julian as time variable? they're about the same...season is better
 # and makes more sense conceptually anyways
 # m1 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Julian +
@@ -411,28 +537,26 @@ m4 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
 #             na.action = na.omit)
 #   
 # model_names <- paste0("m", 1:2)
-# models <- mget(model_names)
-# aictab(models, modnames = model_names)
+#  models <- mget(model_names)
+#  aictab(models, modnames = model_names)
 # 
 # # plot relationships
 # ggplot(data = full, aes(y = FatteningIndex, x = Julian)) + geom_point()
   
 
-# is random effect of site needed or helpful? NO! Causes issues
-# m1 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Julian +
-#             PlasmaDetection + time_hours + BCI + EnvDetection,
-#           family = gaussian(),
-#           data = full,
-#           na.action = na.omit)
-# 
-# m2 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Julian +
-#             PlasmaDetection + time_hours + BCI + EnvDetection +
-#               (1|Site),
-#           family = gaussian(),
-#           data = full,
-#           na.action = na.omit)
-# 
-# summary(m2) # variance ~ 0; sd ~ 0
+# is random effect of species needed or helpful? no!
+# m1 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                PlasmaDetection + time_hours,
+#              family = gaussian(),
+#              data = full,
+#              na.action = na.omit)
+#   
+# m2 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+#                PlasmaDetection + time_hours +
+#                  (1|Species),
+#             family = gaussian(),
+#              data = full,
+#              na.action = na.omit)
 # 
 # model_names <- paste0("m", 1:2)
 # models <- mget(model_names)
@@ -506,10 +630,10 @@ m5 <- glm(EnvDetection ~ PercentAg,
 #---
   
 # ...pectoral muscle model ----
-# m6 <- lm(Standardized.Pec ~ Biomass + MigStatus + PercentAg + Season +
-#         PlasmaDetection + time_hours + EnvDetection,
-#         na.action = na.omit,
-#         data = full)
+m6 <- lm(Standardized.Pec.NoEvent ~ Biomass + MigStatus + PercentAg + Season +
+         PlasmaDetection + time_hours + EnvDetection,
+         na.action = na.omit,
+         data = full)
   
 # view individual relationships
 # no clear relationships
@@ -522,11 +646,11 @@ m5 <- glm(EnvDetection ~ PercentAg,
 #---
   
 # ...fat model ISSUES WITH MODEL DIAGNOSTICS AND RIGHT SKEWED DATA ----
-# m7 <- lm(Fat ~ Biomass + MigStatus + PercentAg + Season +
-#          PlasmaDetection + time_hours + EnvDetection,
-#          na.action = na.omit,
-#          data = full)
-  
+ # m7 <- lm(Fat ~ Biomass + MigStatus + PercentAg + Season +
+ #          PlasmaDetection + time_hours + EnvDetection,
+ #          na.action = na.omit,
+ #          data = full.c)
+ #  
 # view individual relationships
 # higher fat in migrants
 # lower fat in spring
@@ -537,101 +661,38 @@ m5 <- glm(EnvDetection ~ PercentAg,
 #---
   
 # ...uric acid model  ----
-# m7 <- lm(Uric ~ Biomass + MigStatus + PercentAg + Season +
-#           PlasmaDetection + time_hours + BCI,
-#           na.action = na.omit,
-#           data = full)
-#   
-# removed because it forces new missing paths that don't make any sense
+# WITH RANDOM EFFECT OF SPECIES
+# removed BCI to avoid overfitting
+
+# no random effect (causes whole model to fail to converge)
+m7 <- lm(Uric ~ Biomass + MigStatus + PercentAg + Season +
+                PlasmaDetection + time_hours,
+              na.action = na.omit,
+              data = full)
+
+# random effect (Variance ~ 0)
+# m7 <- glmmTMB(Uric ~ Biomass + MigStatus + PercentAg + Season +
+#              PlasmaDetection + time_hours + (1|Species),
+#             na.action = na.omit,
+#             data = full.3)
+
 
 #------------------------------------------------------------------------------#
 #                            run piecewise SEMs                             ----                        
 #------------------------------------------------------------------------------# 
+# SEM
+model <- psem(m1, m2, m3, m4, m5, m6, m7)
+summary(model, conserve = TRUE)
 
-# FINAL SEM --------------------------------------------------------------------
-# BCI as primary body condition index (BEST & SIMPLEST MODEL)                  #  
-model.BCI <- psem(m1, m2, m3, m4, m5)
-summary(model.BCI, conserve = TRUE)
-# Fisher's C = 19.926 with P=value = 0.588 and on 22 degrees of freedom
-# AIC 264.024
+# add correlated errors for nonsensical independence claims and correlated
+# body condition metrics (double arrow)
+model2 <- update(model, 
+                 EnvDetection %~~% time_hours,
+                 Biomass %~~% EnvDetection,
+                 Standardized.Pec.NoEvent %~~% BCI.NoEvent,
+                 FatteningIndex %~~% BCI.NoEvent)
 
-
-# Create fake data
-set.seed(1)
-
-data <- data.frame(
-  x = runif(100),
-  y1 = runif(100),
-  y2 = rpois(100, 1),
-  y3 = runif(100)
-)
-
-# Create SEM using `psem`
-modelList <- psem(
-  lm(y1 ~ x, data),
-  glm(y2 ~ x, "poisson", data),
-  lm(y3 ~ y1 + y2, data),
-  data
-)
-
-# Run summary
-summary(modelList)
-
-# Address conflict using conserve = T
-summary(modelList, conserve = T)
-
-# Address conflict using direction = c()
-summary(modelList, direction = c("y2 <- y1"))
-
-# Address conflict using correlated errors
-modelList2 <- update(modelList, y2 %~~% y1)
-
-summary(modelList2)
-
-basisSet(model.BCI)
-#------------------------------------------------------------------------------#
-
-# Standardized pectoral muscle size as primary body condition index
-# m4 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
-#             PlasmaDetection + time_hours + Standardized.Pec + EnvDetection,
-#           family = gaussian(),
-#           data = full,
-#           na.action = na.omit)
-# 
-# model.Pec <- psem(m1, m2, m4, m5, m6)
-# summary(model.Pec, conserve = TRUE)
-# # Fisher's C = 218.88 with P-value = 0 and on 16 degrees of freedom
-# # AIC 313.507
-# # missing paths that don't make sense (except biomass ~ envdetection but 
-# # we know apriori that relationship is not significant)
-# 
-  
-  
-# # BCI and Standardized Pectoral Muscle in same model
-# m3 <- lm(BCI ~ Biomass + PercentAg + PlasmaDetection +
-#            time_hours + Standardized.Pec,
-#          data = full,
-#          na.action = na.omit)
-# 
-# m4 <- glm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
-#             PlasmaDetection + time_hours + BCI + Standardized.Pec +
-#             EnvDetection,
-#           family = gaussian(),
-#           data = full,
-#           na.action = na.omit)
-# 
-# model.BCIandPec <- psem(m1, m2, m3, m4, m5, m6)
-# summary(model.BCIandPec, conserve = TRUE)
-# Fisher's C = 225.564 with P-value = 0 and on 22 degrees of freedom
-# AIC 229.842
-# lots of missing paths that don't make sense
-  
-  
-# Model that also includes uric acid 
-# model.BCIandUric <- psem(m1, m2, m3, m4, m5, m7)
-# summary(model.BCIandUric, conserve = TRUE)
-# lots of missing paths that don't make sense, brought in new correlations
-# extremely high AIC (1306.766)
+summary(model2, conserve = TRUE)
 
 #------------------------------------------------------------------------------#
 #                             model diagnostics                             ----                        
@@ -641,28 +702,27 @@ basisSet(model.BCI)
 plot(residuals(m1, type = "deviance") ~ fitted(m1))
 abline(h = 0, col = "red") # reasonable fit
 
-# m2 --- GOOD, no violations
+# m2 --- GOOD, no severe violations
 simulationOutput <- simulateResiduals(fittedModel = m2) 
-plot(simulationOutput)
+plot(simulationOutput) # significant
 testDispersion(m2) 
 testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
+testQuantiles(simulationOutput) # pattern but not significant
 
-plotResiduals(simulationOutput, form = model.frame(m2)$PercentAg) # good
+plotResiduals(simulationOutput, form = model.frame(m2)$PercentAg) # some pattern, n.s.
 plotResiduals(simulationOutput, form = model.frame(m2)$EnvDetection) # good
-plotResiduals(simulationOutput, form = model.frame(m2)$SPEI) # good
 plotResiduals(simulationOutput, form = model.frame(m2)$MigStatus) # good
-plotResiduals(simulationOutput, form = model.frame(m2)$time_hours) # good
-plotResiduals(simulationOutput, form = model.frame(m2)$Julian) # good
+plotResiduals(simulationOutput, form = model.frame(m2)$time_hours) # some pattern
+plotResiduals(simulationOutput, form = model.frame(m2)$Season) # good
 
-# m3 --- GOOD, no violations
+# m3 --- GOOD, no severe violations
 simulationOutput <- simulateResiduals(fittedModel = m3) 
 plot(simulationOutput)
 testDispersion(m3) 
 testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
+testQuantiles(simulationOutput) # significant
 
 plotResiduals(simulationOutput, form = model.frame(m3)$PercentAg) # good
 plotResiduals(simulationOutput, form = model.frame(m3)$PlasmaDetection) # good
@@ -670,12 +730,12 @@ plotResiduals(simulationOutput, form = model.frame(m3)$time_hours) # good
 plotResiduals(simulationOutput, form = model.frame(m3)$Biomass) # good
 
 
-# m4 --- GOOD, no violations
+# m4 --- GOOD, no severe violations
 simulationOutput <- simulateResiduals(fittedModel = m4) 
 plot(simulationOutput)
 testDispersion(m4) 
 testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
+testOutliers(simulationOutput) # significant, but all else good
 testQuantiles(simulationOutput) 
 
 plotResiduals(simulationOutput, form = model.frame(m4)$PercentAg) # good
@@ -692,34 +752,35 @@ plot(residuals(m5, type = "deviance") ~ fitted(m5))
 abline(h = 0, col = "red") # reasonable fit
 
 # m6 --- GOOD, no severe violations overall
-# simulationOutput <- simulateResiduals(fittedModel = m6) 
-# plot(simulationOutput)
-# testDispersion(m6) 
-# testUniformity(simulationOutput)
-# testOutliers(simulationOutput) 
-# testQuantiles(simulationOutput) 
-# 
-# plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg) # good
-# plotResiduals(simulationOutput, form = model.frame(m6)$Biomass) # good
-# plotResiduals(simulationOutput, form = model.frame(m6)$MigStatus) # good
-# plotResiduals(simulationOutput, form = model.frame(m6)$time_hours) # good
-# plotResiduals(simulationOutput, form = model.frame(m6)$Season) # some pattern
-# plotResiduals(simulationOutput, form = model.frame(m6)$PlasmaDetection) # good
-# plotResiduals(simulationOutput, form = model.frame(m6)$EnvDetection) # good
-# 
-# 
+simulationOutput <- simulateResiduals(fittedModel = m6) 
+plot(simulationOutput)
+testDispersion(m6) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) # some pattern but not significant
+
+plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$Biomass) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$MigStatus) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$time_hours) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$Season) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$PlasmaDetection) # good
+plotResiduals(simulationOutput, form = model.frame(m6)$EnvDetection) # good
+
+ 
 # # m7 --- GOOD, no violations
-# simulationOutput <- simulateResiduals(fittedModel = m7) 
-# plot(simulationOutput)
-# testDispersion(m7) 
-# testUniformity(simulationOutput)
-# testOutliers(simulationOutput) 
-# testQuantiles(simulationOutput) 
+simulationOutput <- simulateResiduals(fittedModel = m7) 
+plot(simulationOutput)
+testDispersion(m7) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) 
 # 
-# plotResiduals(simulationOutput, form = model.frame(m7)$PercentAg) # good
-# plotResiduals(simulationOutput, form = model.frame(m7)$Biomass) # good
-# plotResiduals(simulationOutput, form = model.frame(m7)$MigStatus) # good
-# plotResiduals(simulationOutput, form = model.frame(m7)$time_hours) # good
-# plotResiduals(simulationOutput, form = model.frame(m7)$Season) # some pattern
-# plotResiduals(simulationOutput, form = model.frame(m7)$PlasmaDetection) # good
-# plotResiduals(simulationOutput, form = model.frame(m7)$EnvDetection) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$PercentAg) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$Biomass) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$MigStatus) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$time_hours) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$Season) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$PlasmaDetection) # good
+plotResiduals(simulationOutput, form = model.frame(m7)$EnvDetection) # good
+

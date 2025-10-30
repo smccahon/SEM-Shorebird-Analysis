@@ -132,8 +132,11 @@ m3 <- lm(log(PecSizeBest) ~ log(Wing) + Species, data = birds.pec)
 birds.pec <- birds.pec %>%
   mutate(Standardized.Pec.NoEvent = residuals(m3))
 
+# flip sign back
+birds.pec$Standardized.Pec.NoEvent <- birds.pec$Standardized.Pec.NoEvent * -1
+
 # plot data
-ggplot(birds, aes(x = Species, y = Standardized.Pec)) + geom_boxplot() +
+ggplot(birds.pec, aes(x = Species, y = Standardized.Pec.NoEvent)) + geom_boxplot() +
   geom_jitter() +
   theme_classic() +
   labs(x = NULL, y = "Relative Pectoral Muscle Size Index") +
@@ -146,6 +149,37 @@ ggplot(birds, aes(x = Species, y = Standardized.Pec)) + geom_boxplot() +
   scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
   geom_hline(linetype = "dashed", color = "red", yintercept = 0,
              size = 1)
+
+ggplot(birds.pec, aes(x = BCI.NoEvent, y = Standardized.Pec.NoEvent)) + 
+  geom_point() +
+  theme_classic() +
+  labs(x = "Mass Index", y = "Relative Pectoral Muscle Size Index") +
+  theme(
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  ) +
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
+  geom_hline(linetype = "dashed", color = "red", yintercept = 0,
+             size = 1)
+
+# invert back 
+birds.pec$PecSizeBest <- birds.pec$PecSizeBest * -1
+
+ggplot(birds.pec, aes(x = PecSizeBest, y = Standardized.Pec.NoEvent)) + 
+  geom_point() +
+  theme_classic() +
+  labs(x = "Pectoral Muscle Sizes", y = "Relative Pectoral Muscle Size Index") +
+  theme(
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  ) +
+  geom_hline(linetype = "dashed", color = "red", yintercept = 0,
+             size = 1)
+
 
 # put back in final dataset
 birds <- birds %>%
@@ -350,6 +384,27 @@ m3 <- lm(log(PecSizeBest) ~ log(Wing) + Species, data = full.pec)
 full.pec <- full.pec %>%
   mutate(Standardized.Pec.NoEvent = residuals(m3))
 
+# flip sign back
+full.pec$Standardized.Pec.NoEvent <- full.pec$Standardized.Pec.NoEvent * -1
+
+# plot data
+ggplot(full.pec, aes(x = Species, y = Standardized.Pec.NoEvent)) + geom_boxplot() +
+  geom_jitter() +
+  theme_classic() +
+  labs(x = NULL, y = "Relative Pectoral Muscle Size Index") +
+  theme(
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  ) +
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
+  geom_hline(linetype = "dashed", color = "red", yintercept = 0,
+             size = 1)
+
+# invert back 
+birds.pec$PecSizeBest <- birds.pec$PecSizeBest * -1
+
 # put back in final dataset
 full <- full %>%
   left_join(
@@ -413,7 +468,7 @@ m1 <- lm(log(Mass) ~ log(Wing) + Species, data = full)
    mutate(BCI.NoEvent = residuals(m1))
 
 # plot data
-ggplot(full, aes(x = Species, y = BCI)) + geom_boxplot() +
+ggplot(full, aes(x = Species, y = BCI.NoEvent)) + geom_boxplot() +
   theme_classic() +
   labs(x = NULL, y = "Relative Body Condition Index") +
   theme(
@@ -505,7 +560,7 @@ full_cleaned <- full %>%
                 Percent_Total_Veg, Julian, Mass, OverallNeonic,
                 Uric, Biomass, DominantCrop, NearestCropType, WaterNeonicDetection, 
                 AnyDetection, MigStatus, AgCategory, SPEI, Sex, Tri, 
-                WaterQuality, PesticideInvert_ng.g, WaterNeonicConc,
+                PesticideInvert_ng.g, WaterNeonicConc,
                 Diversity, Dist_Closest_Wetland_m, Percent_Exposed_Shoreline,
                 InvertPesticideDetection, EnvDetection, FatteningIndex, time_hours,
                 AnnualSnowfall_in, PrecipitationAmount_7days, 

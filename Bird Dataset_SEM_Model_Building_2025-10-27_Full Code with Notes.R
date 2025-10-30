@@ -2,7 +2,7 @@
 #           SEM Model Building            #
 #   Drivers of Shorebird Body Condition   #
 # Created by Shelby McCahon on 10/27/2025 #
-#         Modified on 10/29/2025          #
+#         Modified on 10/30/2025          #
 #-----------------------------------------#
 
 # load packages
@@ -90,11 +90,9 @@ birds <- birds %>%
 site_data <- birds %>%
   distinct(Site, SPEI, PercentAg, Season, EnvDetection)
 
-# no missing data in body condition (this allows us to use correlated errors)
-# issue is, this brings sample size down to 80 birds...i get some diff results...
-# birds.c <- birds %>%
-#   filter(complete.cases(BCI.NoEvent, Fat, PecSizeBest, PlasmaDetection, 
-#                         FatteningIndex, Standardized.Pec.NoEvent, Uric))
+birds <- birds %>%
+   filter(complete.cases(BCI.NoEvent, Standardized.Pec.NoEvent, 
+                         PlasmaDetection))
 
 
 #------------------------------------------------------------------------------#
@@ -183,8 +181,13 @@ m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
 # no random effect of species because species is already considered in 
 # residual analysis (log(Mass)~log(Wing) + Species)
 
-m3 <- lm(BCI.NoEvent ~ time_hours + PlasmaDetection + SPEI + PercentAg + Season,
+# adding in pec index gave nonsensical results...decided to omit here
+# d sep did not flag it as necessary to include anyways
+# adding in fattening index also made model significantly worse...
+m3 <- lm(BCI.NoEvent ~ time_hours + PlasmaDetection + SPEI + PercentAg + 
+           Season,
          data = birds)
+
 
 # ...fattening index model ----
 # species performs better than migratory status alone (AICc wt = 0.96)
@@ -193,10 +196,12 @@ m3 <- lm(BCI.NoEvent ~ time_hours + PlasmaDetection + SPEI + PercentAg + Season,
 # best I can do is species as a random effect and migratory status as fixed
 # effect of plasma detection on fattening index is still significant with
 # species as a random or fixed effect!
+# including body condition in fattening index model significantly improved fit
 
 # WITH RANDOM EFFECT
-m4 <- glmmTMB(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + 
+m4 <- glmmTMB(FatteningIndex ~ MigStatus + Season + SPEI + 
                 PercentAg + time_hours + PlasmaDetection + EnvDetection + 
+                # BCI.NoEvent +
                 (1|Species), data = birds)
 
 # m4 <- lm(FatteningIndex ~ BCI.NoEvent + Season + SPEI + 
@@ -206,17 +211,6 @@ m4 <- glmmTMB(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI +
 # WITHOUT RANDOM EFFECT
 # m4 <- lm(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + PercentAg +
 #                  time_hours + PlasmaDetection + EnvDetection, data = birds)
-
-# random effect needed? YES (AICc wt = 0.92)
-m1 <- glmmTMB(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + PercentAg +
-                  time_hours + PlasmaDetection + EnvDetection + (1|Species), data = birds)
-#  
-#  m2 <- glmmTMB(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + PercentAg +
-#                   time_hours + PlasmaDetection + EnvDetection, data = birds)
-# #  
-#   model_names <- paste0("m", 1:2)
-#   models <- mget(model_names)
-#   aictab(models, modnames = model_names)
 
 
 # view Fattening Index ~ Plasma Detection
@@ -310,6 +304,7 @@ m1 <- glmmTMB(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + Percent
 # ...pectoral muscle size model ----
 # corrected for size and species -- random effect and mig. status not needed
 
+# fattening index not significant here
 m6 <- lm(Standardized.Pec.NoEvent ~ time_hours + PercentAg + SPEI + 
                 Season + PlasmaDetection, 
               data = birds)
@@ -393,9 +388,10 @@ testOutliers(simulationOutput)
 testQuantiles(simulationOutput) 
 
 plotResiduals(simulationOutput, form = model.frame(m3)$PercentAg) # good
-plotResiduals(simulationOutput, form = model.frame(m3)$PlasmaDetection) # some pattern
+plotResiduals(simulationOutput, form = model.frame(m3)$PlasmaDetection) # good
 plotResiduals(simulationOutput, form = model.frame(m3)$time_hours)  # good
-plotResiduals(simulationOutput, form = model.frame(m3)$SPEI) # some pattern
+plotResiduals(simulationOutput, form = model.frame(m3)$SPEI) # good
+plotResiduals(simulationOutput, form = model.frame(m3)$FatteningIndex) # good
 
 # fattening index model --- overall good, some pattern
 simulationOutput <- simulateResiduals(fittedModel = m4) 
