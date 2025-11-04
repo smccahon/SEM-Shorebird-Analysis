@@ -201,7 +201,7 @@ m3 <- lm(BCI.NoEvent ~ time_hours + PlasmaDetection + SPEI + PercentAg +
 # WITH RANDOM EFFECT
 m4 <- glmmTMB(FatteningIndex ~ MigStatus + Season + SPEI + 
                 PercentAg + time_hours + PlasmaDetection + EnvDetection + 
-                # BCI.NoEvent +
+                BCI.NoEvent +
                 (1|Species), data = birds)
 
 # m4 <- lm(FatteningIndex ~ BCI.NoEvent + Season + SPEI + 

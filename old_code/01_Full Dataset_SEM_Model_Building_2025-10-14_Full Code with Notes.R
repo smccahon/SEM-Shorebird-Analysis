@@ -392,7 +392,7 @@ m2 <- glm(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours +
 
 #### ...final body condition index model ----
 m3 <- lm(BCI.NoEvent ~ Biomass + PercentAg + PlasmaDetection +
-         time_hours + Season,
+         time_hours + Season + Standardized.Pec.NoEvent,
          data = full,
          na.action = na.omit)
   
