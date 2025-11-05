@@ -288,7 +288,8 @@ invert_cleaned <- invert %>%
          NearestCropDistance_m, AgCategory, ShorebirdsSeen,
          NeonicInvert_ng.g, NeonicWater_ng.L, DominantCrop, NearestCropType,
          PrecipitationAmount_7days, DaysSinceLastPrecipitation_5mm, 
-         AnnualSnowfall_in, EnvDetection)
+         AnnualSnowfall_in, EnvDetection,
+         TDS_mg.L, Salinity_ppt, Conductivity_uS.cm)
 
 write.csv(invert_cleaned, "cleaned_data/invert_data_cleaned_2025-08-11.csv",
           row.names = FALSE)

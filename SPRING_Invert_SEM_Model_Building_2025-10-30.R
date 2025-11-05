@@ -1,7 +1,7 @@
 #----------------------------------------#
 #           SEM Model Building           #
-#          Invertebrate Dataset          #
-#  Created by Shelby McCahon on 10/31/25 #
+#      Spring Invertebrate Dataset       #
+#  Created by Shelby McCahon on 11/04/25 #
 #         Modified on 11/04/2025         #
 #----------------------------------------#
 
@@ -23,6 +23,9 @@ library(statmod)
 #------------------------------------------------------------------------------# 
 
 invert <- read.csv("cleaned_data/invert_data_cleaned_2025-08-11.csv")
+
+# subset to spring (n = 35)
+invert <- subset(invert, Season == "Spring")
 
 # theme for plotting
 my_theme <- theme_classic() + theme(
@@ -93,64 +96,45 @@ high_corr <- high_corr[order(-abs(high_corr$Correlation)), ]
 
 high_corr
 
-#                      Var1                     Var2 Correlation
-# 552    Conductivity_uS.cm             Salinity_ppt       0.999
-# 287          Salinity_ppt             WaterQuality       0.998
-# 288    Conductivity_uS.cm             WaterQuality       0.997
-# 286              TDS_mg.L             WaterQuality       0.991
-# 527          Salinity_ppt                 TDS_mg.L       0.981
-# 528    Conductivity_uS.cm                 TDS_mg.L       0.979
-# 9                  Julian                   Season      -0.970
-# 333          EnvDetection InvertPesticideDetection       0.854
-# 227              Buffered                PercentAg      -0.748
-# 131              Buffered    NearestCropDistance_m       0.731
-# 222 NearestCropDistance_m                PercentAg      -0.725
-# 15             Permanence                   Season      -0.630
-# 13              Diversity                   Season      -0.626
-# 345                Julian               Permanence       0.615
+#                         Var1                     Var2 Correlation
+# 286                 TDS_mg.L             WaterQuality       1.000
+# 288       Conductivity_uS.cm             WaterQuality       1.000
+# 287             Salinity_ppt             WaterQuality       1.000
+# 528       Conductivity_uS.cm                 TDS_mg.L       1.000
+# 527             Salinity_ppt                 TDS_mg.L       0.999
+# 552       Conductivity_uS.cm             Salinity_ppt       0.999
+# 131                 Buffered    NearestCropDistance_m       0.851
+# 117             EnvDetection     WaterNeonicDetection       0.793
+# 96        Conductivity_uS.cm     PesticideInvert_ng.g       0.779
+# 268     PesticideInvert_ng.g             WaterQuality       0.772
+# 532     PesticideInvert_ng.g             Salinity_ppt       0.772
+# 508     PesticideInvert_ng.g                 TDS_mg.L       0.766
+# 325                Diversity InvertPesticideDetection       0.758
+# 222    NearestCropDistance_m                PercentAg      -0.739
+# 227                 Buffered                PercentAg      -0.733
+# 291                  Biomass                Diversity       0.717
+# 350 InvertPesticideDetection               Permanence       0.683
+# 110 InvertPesticideDetection     WaterNeonicDetection      -0.667
 
 #------------------------------------------------------------------------------#
-#                 pick which water quality metric to use                    ----                        
+#                      which variables can go in model                      ----                        
 #------------------------------------------------------------------------------# 
 
-invert <- invert %>% 
-  mutate(Biomass.m = Biomass + 0.001) # n = 77
+table(invert$Buffered) # 27 not buffered, 8 buffered -> just use % ag
+table(invert$WaterNeonicDetection) # 14 with detections, 21 without detections
+table(invert$InvertPesticideDetection) # 4 with detections, 6 without
 
-# which water quality metric should I use? I will have to log transform
-# response so water quality index (PCA) is not going to work
-m1 <- glm(Biomass.m ~ Conductivity_uS.cm, invert,
-          family = Gamma(link = "log"))
-m2 <- glm(Biomass.m ~ Salinity_ppt, invert,
-          family = Gamma(link = "log")) # the best, but all pretty much the same
-m3 <- glm(Biomass.m ~ TDS_mg.L, invert,
-          family = Gamma(link = "log"))
+table(invert$EnvDetection) # 18 with detections 
+# this includes the 4 wetlands with invert pesticide detections 
+# (that didn't have neonics in the wetland)
 
-# what about pH? important variable
-m4 <- glm(Biomass.m ~ pH_probe, invert,
-          family = Gamma(link = "log"))
+table(invert$Permanence) # very uneven, not worth including
 
-model_names <- paste0("m", 1:4)
-models <- mget(model_names)
-aictab(models, modnames = model_names)
+# variables of interest and for simplicity:
+# % cropland, biomass, diversity, water neonic conc
 
-m1 <- glm(Diversity ~ Conductivity_uS.cm, invert,
-          family = poisson())
-m2 <- glm(Diversity ~ Salinity_ppt, invert,
-          family = poisson())
-m3 <- glm(Diversity ~ TDS_mg.L, invert,
-          family = poisson()) # the best, but all within 2 delta AICc
-
-# what about pH? important variable
-m4 <- glm(Diversity ~ pH_probe, invert,
-          family = poisson())
-
-model_names <- paste0("m", 1:4)
-models <- mget(model_names)
-aictab(models, modnames = model_names)
-
-
-# biological relevance: choose conductivity (directly tied to ion concentration
-# and osmotic stress on inverts; more commonly seen in literature)
+# SHOULD I INCLUDE DETECTION? IF I DO, IT's  SIGN. POSITIVE EFFECT WHICH
+# MAKES NO SENSE (btoh for envdetection and waterneonicdetection)
 
 #------------------------------------------------------------------------------#
 #         fit individual models to full dataset (structural equations)      ----                        
@@ -163,117 +147,61 @@ aictab(models, modnames = model_names)
 # piecewiseSEM does not support tweedie distribution which is ideal dist.
 # next best is gamma
 invert <- invert %>% 
-  mutate(Biomass.m = Biomass + 0.001) # n = 77
+  mutate(Biomass.m = Biomass + 0.0001) # n = 77
+
+# add a small constant so we can log transform
+invert <- invert %>% 
+  mutate(LogWaterNeonic.m = log(NeonicWater_ng.L + 0.000001))
 
 invert <- invert %>% 
-  mutate(LogConductivity = log(Conductivity_uS.cm))
+  mutate(WaterNeonic.m = NeonicWater_ng.L + 0.000001)
+
 
 # need to simplify model to avoid model convergence issues
-# removed vegetation cover and buffer presence 
-m1 <- glm(Biomass.m ~ PercentAg + Season + EnvDetection + 
-            LogConductivity + Permanence + pH_probe, 
+# removed vegetation cover, buffer presence, and water quality variables
+m1 <- glm(Biomass.m ~ PercentAg + 
+            LogWaterNeonic.m,
           data = invert,
           family = Gamma(link = "log"))
 
+# view individual relationships
+# ggplot(invert, aes(x = PercentAg, y = Biomass.m)) +
+#   geom_point() + my_theme
+# 
+# ggplot(invert, aes(x = PercentAg, y = log(Biomass.m))) +
+#   geom_point() + my_theme
+# 
+# ggplot(invert, aes(x = as.factor(WaterNeonicDetection), 
+#                    y = Biomass.m)) +
+#   geom_boxplot() + my_theme
+
+# heavily right skewed still
+# hist(invert$Biomass.m)
+
 # extract standardized coefficients manually from gamma distribution
-# % surrounding cropland
 beta <- coef(m1)["PercentAg"]
 sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
                trigamma(1 / summary(m1)$dispersion)) # observation-level variance
 sd_x <- sd(invert$PercentAg)
 beta_std <- beta * (sd_x / sd_y)
-beta_std # -0.239 is standardized estimate
-
-# season
-beta <- coef(m1)["Season"]
-sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
-               trigamma(1 / summary(m1)$dispersion)) # observation-level variance
-sd_x <- sd(invert$PercentAg)
-beta_std <- beta * (sd_x / sd_y)
-beta_std #-0.103  is standardized estimate
-
-# environmental detection
-beta <- coef(m1)["EnvDetection"]
-sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
-               trigamma(1 / summary(m1)$dispersion)) # observation-level variance
-sd_x <- sd(invert$PercentAg)
-beta_std <- beta * (sd_x / sd_y)
-beta_std # 0.0396 is standardized estimate
-
-# conductivity
-beta <- coef(m1)["LogConductivity"]
-sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
-               trigamma(1 / summary(m1)$dispersion)) # observation-level variance
-sd_x <- sd(invert$PercentAg)
-beta_std <- beta * (sd_x / sd_y)
-beta_std # -0.0316 is standardized estimate
-
-# pH
-beta <- coef(m1)["pH_probe"]
-sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
-               trigamma(1 / summary(m1)$dispersion)) # observation-level variance
-sd_x <- sd(invert$PercentAg)
-beta_std <- beta * (sd_x / sd_y)
-beta_std # -0.0146 is standardized estimate
-
-# permanence
-beta <- coef(m1)["Permanence"]
-sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
-               trigamma(1 / summary(m1)$dispersion)) # observation-level variance
-sd_x <- sd(invert$PercentAg)
-beta_std <- beta * (sd_x / sd_y)
-beta_std # 0.045 is standardized estimate
-
-
+beta_std # -0.277 is standardized estimate
 
 # ...diversity model ----
-m2 <- glm(Diversity ~ PercentAg + Season + LogConductivity + 
-            EnvDetection + Permanence + pH_probe, 
+m2 <- glm(Diversity ~ PercentAg + 
+            LogWaterNeonic.m,
           data = invert,
           family = poisson())
 
-# ...pesticide detection model ----
-m3 <- glm(EnvDetection ~ PercentAg + Season + Buffered + Permanence,
-          data = invert, family = binomial())
-
-# ...water quality index model ----
-# must log transform to account for heteroscedasticity in response
-m4 <- lm(LogConductivity ~ PercentAg + Buffered + Season + Permanence, 
+# ...water neonic conc. model ----
+m3 <- lm(LogWaterNeonic.m ~ PercentAg,
          data = invert)
-
-# view individual relationships
-# # no clear relationship
-# ggplot(invert, aes(x = PercentAg, y = WaterQuality)) +
-#   geom_point() + geom_hline(yintercept = 0) + my_theme
-# 
-# # no clear relationship
-# ggplot(invert, aes(x = as.factor(Buffered), y = WaterQuality)) +
-#   geom_boxplot() + geom_hline(yintercept = 0) + my_theme
-# 
-# # water quality much lower in the spring (23 in spring, 54 in fall)
-# ggplot(invert, aes(x = as.factor(Season), y = WaterQuality)) +
-#   geom_boxplot() + geom_hline(yintercept = 0) + my_theme
-# 
-# # higher in semipermanent and permanent wetlands
-# ggplot(invert, aes(x = as.factor(Permanence), y = WaterQuality)) +
-#   geom_point() + geom_hline(yintercept = 0) + my_theme
-
-
-# ...pH model ----
-m5 <- lm(pH_probe ~ PercentAg + Buffered + Season + Permanence, 
-         data = invert)
-
-# good
-# plot(m5)
-
 
 # run piecewiseSEM
-model <- psem(m1,m2,m3,m4,m5)
+model <- psem(m1,m2,m3)
 summary(model, conserve = TRUE)
 
 model2 <- update(model, 
-                 Permanence %~~% Season,
-                 PercentAg %~~% Buffered)
+                 Diversity %~~% Biomass.m)
 summary(model2, conserve = TRUE)
 
 #------------------------------------------------------------------------------#
@@ -281,23 +209,18 @@ summary(model2, conserve = TRUE)
 #------------------------------------------------------------------------------# 
 
 
-# m1 ---  good, no severe violations
-# significant pattern in quantiles
-simulationOutput <- simulateResiduals(fittedModel = m1) # quantile test sign.
+# m1 ---  good, no violations
+simulationOutput <- simulateResiduals(fittedModel = m1)
 plot(simulationOutput)
 testDispersion(m1) 
 testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) # significant
+testQuantiles(simulationOutput) 
 
-plotResiduals(simulationOutput, form = model.frame(m1)$PercentAg) # good
-plotResiduals(simulationOutput, form = model.frame(m1)$EnvDetection)  # good
-plotResiduals(simulationOutput, form = model.frame(m1)$Season) # significant (maybe due to correlation)
-plotResiduals(simulationOutput, form = model.frame(m1)$Permanence) # good
-plotResiduals(simulationOutput, form = model.frame(m1)$Conductivity_uS.cm) # significant
-plotResiduals(simulationOutput, form = model.frame(m1)$pH_probe) # good
+plotResiduals(simulationOutput, form = model.frame(m1)$PercentAg) 
+plotResiduals(simulationOutput, form = model.frame(m1)$LogWaterNeonic.m) 
 
-# m2 --- all good, no violations at all
+# m2 --- overdispersed!!
 simulationOutput <- simulateResiduals(fittedModel = m2) 
 plot(simulationOutput)
 testDispersion(m2) 
@@ -339,17 +262,30 @@ plotResiduals(simulationOutput, form = model.frame(m4)$Season)
 plotResiduals(simulationOutput, form = model.frame(m4)$Buffered) 
 plotResiduals(simulationOutput, form = model.frame(m4)$Permanence) # pattern but n.s.
 
-# m5 --- good, no severe violations
-# patterns in residuals but not significant except for permanence
+# m5 --- ISSUES; issues with all variables
 simulationOutput <- simulateResiduals(fittedModel = m5) 
 plot(simulationOutput)
 testDispersion(m5) 
-testUniformity(simulationOutput)
+testUniformity(simulationOutput) # ISSUE
 testOutliers(simulationOutput) 
 testQuantiles(simulationOutput) 
 
 plotResiduals(simulationOutput, form = model.frame(m5)$PercentAg) 
 plotResiduals(simulationOutput, form = model.frame(m5)$Season) 
 plotResiduals(simulationOutput, form = model.frame(m5)$Buffered) 
-plotResiduals(simulationOutput, form = model.frame(m5)$Permanence) # sign.
+plotResiduals(simulationOutput, form = model.frame(m5)$Permanence) 
 
+
+# m6 ---  good, no severe violations
+# pattern but not significant
+simulationOutput <- simulateResiduals(fittedModel = m6) 
+plot(simulationOutput)
+testDispersion(m6) 
+testUniformity(simulationOutput)
+testOutliers(simulationOutput) 
+testQuantiles(simulationOutput) 
+
+plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg) # issue but n.s.
+plotResiduals(simulationOutput, form = model.frame(m6)$Season) 
+plotResiduals(simulationOutput, form = model.frame(m6)$Buffered) 
+plotResiduals(simulationOutput, form = model.frame(m6)$Permanence) # issue, sign likely due to correlation
