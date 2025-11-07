@@ -2,7 +2,7 @@
 #           SEM Model Building           #
 #      Spring Invertebrate Dataset       #
 #  Created by Shelby McCahon on 11/04/25 #
-#         Modified on 11/04/2025         #
+#         Modified on 11/05/2025         #
 #----------------------------------------#
 
 # load packages
@@ -17,6 +17,9 @@ library(car)
 library(AICcmodavg)
 library(cplm)
 library(statmod)
+library(MASS)
+
+m <- lm(Biomass ~ )
 
 #------------------------------------------------------------------------------#
 #                        load data and organize datasets                    ----                        
@@ -136,6 +139,14 @@ table(invert$Permanence) # very uneven, not worth including
 # SHOULD I INCLUDE DETECTION? IF I DO, IT's  SIGN. POSITIVE EFFECT WHICH
 # MAKES NO SENSE (btoh for envdetection and waterneonicdetection)
 
+
+ggplot(invert, aes(x = as.factor(WaterNeonicDetection), y = Biomass)) + 
+  geom_boxplot() + my_theme
+
+t.test(invert$WaterNeonicDetection, invert$Biomass)
+
+wilcox.test(invert$WaterNeonicDetection, invert$Biomass)
+
 #------------------------------------------------------------------------------#
 #         fit individual models to full dataset (structural equations)      ----                        
 #------------------------------------------------------------------------------# 
@@ -156,17 +167,29 @@ invert <- invert %>%
 invert <- invert %>% 
   mutate(WaterNeonic.m = NeonicWater_ng.L + 0.000001)
 
+# subset to positive values only (n = 14)
+invert.pos <- invert %>% 
+  filter(NeonicWater_ng.L > 0) %>% 
+  mutate(LogWaterNeonic.m = log(NeonicWater_ng.L + 0.00001))
+
 
 # need to simplify model to avoid model convergence issues
 # removed vegetation cover, buffer presence, and water quality variables
-m1 <- glm(Biomass.m ~ PercentAg + 
-            LogWaterNeonic.m,
+m1 <- glm(Biomass.m ~ PercentAg + WaterNeonicDetection,
           data = invert,
           family = Gamma(link = "log"))
 
+m1 <- glm(Biomass.m ~ PercentAg + LogWaterNeonic.m,
+          data = invert,
+          family = Gamma(link = "log"))
+
+summary(m1)
+
+plot(m1)
+
 # view individual relationships
-# ggplot(invert, aes(x = PercentAg, y = Biomass.m)) +
-#   geom_point() + my_theme
+ggplot(invert.pos, aes(x = LogWaterNeonic.m, y = Biomass)) +
+geom_point() + my_theme
 # 
 # ggplot(invert, aes(x = PercentAg, y = log(Biomass.m))) +
 #   geom_point() + my_theme
@@ -187,14 +210,26 @@ beta_std <- beta * (sd_x / sd_y)
 beta_std # -0.277 is standardized estimate
 
 # ...diversity model ----
-m2 <- glm(Diversity ~ PercentAg + 
-            LogWaterNeonic.m,
-          data = invert,
-          family = poisson())
+m2 <- glm.nb(Diversity ~ PercentAg + WaterNeonicDetection,
+          data = invert)
+
+summary(m2)
 
 # ...water neonic conc. model ----
+m3 <- glm(WaterNeonicDetection ~ PercentAg,
+         data = invert,
+         family = binomial())
+
+
 m3 <- lm(LogWaterNeonic.m ~ PercentAg,
-         data = invert)
+          data = invert)
+
+ggplot(invert, aes(x = PercentAg, y = LogWaterNeonic.m)) + 
+  geom_point() + my_theme
+
+hist(invert$LogWaterNeonic.m)
+
+plot(m3)
 
 # run piecewiseSEM
 model <- psem(m1,m2,m3)
@@ -235,7 +270,7 @@ plotResiduals(simulationOutput, form = model.frame(m2)$Season)
 plotResiduals(simulationOutput, form = model.frame(m2)$Permanence) 
 plotResiduals(simulationOutput, form = model.frame(m2)$WaterQuality) 
 
-# m3 --- all good, no violations
+# m3 --- issues
 simulationOutput <- simulateResiduals(fittedModel = m3) 
 plot(simulationOutput)
 testDispersion(m3) 
@@ -246,46 +281,4 @@ testQuantiles(simulationOutput)
 plotResiduals(simulationOutput, form = model.frame(m3)$PercentAg) 
 plotResiduals(simulationOutput, form = model.frame(m3)$Season) 
 plotResiduals(simulationOutput, form = model.frame(m3)$Buffered) 
-plotResiduals(simulationOutput, form = model.frame(m3)$Permanence) # slight issue
-
-# m4 ---  good, no severe violations with log transformation of response
-# patterns, but n.s.
-simulationOutput <- simulateResiduals(fittedModel = m4) 
-plot(simulationOutput)
-testDispersion(m4) 
-testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) # pattern but n.s.
-
-plotResiduals(simulationOutput, form = model.frame(m4)$PercentAg) 
-plotResiduals(simulationOutput, form = model.frame(m4)$Season) 
-plotResiduals(simulationOutput, form = model.frame(m4)$Buffered) 
-plotResiduals(simulationOutput, form = model.frame(m4)$Permanence) # pattern but n.s.
-
-# m5 --- ISSUES; issues with all variables
-simulationOutput <- simulateResiduals(fittedModel = m5) 
-plot(simulationOutput)
-testDispersion(m5) 
-testUniformity(simulationOutput) # ISSUE
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
-
-plotResiduals(simulationOutput, form = model.frame(m5)$PercentAg) 
-plotResiduals(simulationOutput, form = model.frame(m5)$Season) 
-plotResiduals(simulationOutput, form = model.frame(m5)$Buffered) 
-plotResiduals(simulationOutput, form = model.frame(m5)$Permanence) 
-
-
-# m6 ---  good, no severe violations
-# pattern but not significant
-simulationOutput <- simulateResiduals(fittedModel = m6) 
-plot(simulationOutput)
-testDispersion(m6) 
-testUniformity(simulationOutput)
-testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
-
-plotResiduals(simulationOutput, form = model.frame(m6)$PercentAg) # issue but n.s.
-plotResiduals(simulationOutput, form = model.frame(m6)$Season) 
-plotResiduals(simulationOutput, form = model.frame(m6)$Buffered) 
-plotResiduals(simulationOutput, form = model.frame(m6)$Permanence) # issue, sign likely due to correlation
+plotResiduals(simulationOutput, form = model.frame(m3)$Permanence) 

@@ -2,7 +2,7 @@
 #           SEM Model Building           #
 #          Invertebrate Dataset          #
 #  Created by Shelby McCahon on 10/31/25 #
-#         Modified on 11/04/2025         #
+#         Modified on 11/05/2025         #
 #----------------------------------------#
 
 # load packages
@@ -113,40 +113,40 @@ high_corr
 #                 pick which water quality metric to use                    ----                        
 #------------------------------------------------------------------------------# 
 
-invert <- invert %>% 
-  mutate(Biomass.m = Biomass + 0.001) # n = 77
+# invert <- invert %>% 
+#   mutate(Biomass.m = Biomass + 0.001) # n = 77
 
-# which water quality metric should I use? I will have to log transform
-# response so water quality index (PCA) is not going to work
-m1 <- glm(Biomass.m ~ Conductivity_uS.cm, invert,
-          family = Gamma(link = "log"))
-m2 <- glm(Biomass.m ~ Salinity_ppt, invert,
-          family = Gamma(link = "log")) # the best, but all pretty much the same
-m3 <- glm(Biomass.m ~ TDS_mg.L, invert,
-          family = Gamma(link = "log"))
-
-# what about pH? important variable
-m4 <- glm(Biomass.m ~ pH_probe, invert,
-          family = Gamma(link = "log"))
-
-model_names <- paste0("m", 1:4)
-models <- mget(model_names)
-aictab(models, modnames = model_names)
-
-m1 <- glm(Diversity ~ Conductivity_uS.cm, invert,
-          family = poisson())
-m2 <- glm(Diversity ~ Salinity_ppt, invert,
-          family = poisson())
-m3 <- glm(Diversity ~ TDS_mg.L, invert,
-          family = poisson()) # the best, but all within 2 delta AICc
-
-# what about pH? important variable
-m4 <- glm(Diversity ~ pH_probe, invert,
-          family = poisson())
-
-model_names <- paste0("m", 1:4)
-models <- mget(model_names)
-aictab(models, modnames = model_names)
+# # which water quality metric should I use? I will have to log transform
+# # response so water quality index (PCA) is not going to work
+# m1 <- glm(Biomass.m ~ Conductivity_uS.cm, invert,
+#           family = Gamma(link = "log"))
+# m2 <- glm(Biomass.m ~ Salinity_ppt, invert,
+#           family = Gamma(link = "log")) # the best, but all pretty much the same
+# m3 <- glm(Biomass.m ~ TDS_mg.L, invert,
+#           family = Gamma(link = "log"))
+# 
+# # what about pH? important variable
+# m4 <- glm(Biomass.m ~ pH_probe, invert,
+#           family = Gamma(link = "log"))
+# 
+# model_names <- paste0("m", 1:4)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
+# 
+# m1 <- glm(Diversity ~ Conductivity_uS.cm, invert,
+#           family = poisson())
+# m2 <- glm(Diversity ~ Salinity_ppt, invert,
+#           family = poisson())
+# m3 <- glm(Diversity ~ TDS_mg.L, invert,
+#           family = poisson()) # the best, but all within 2 delta AICc
+# 
+# # what about pH? important variable
+# m4 <- glm(Diversity ~ pH_probe, invert,
+#           family = poisson())
+# 
+# model_names <- paste0("m", 1:4)
+# models <- mget(model_names)
+# aictab(models, modnames = model_names)
 
 
 # biological relevance: choose conductivity (directly tied to ion concentration
@@ -236,6 +236,14 @@ m2 <- glm(Diversity ~ PercentAg + Season + LogConductivity +
 m3 <- glm(EnvDetection ~ PercentAg + Season + Buffered + Permanence,
           data = invert, family = binomial())
 
+# should I add precipitation/snowfall?
+# annual snowfall not significant, no spurious results (AIC = 595) -> 593 without
+# days since last precipitation only has an effect on pH (no subsequent effects)
+# precipitation amount results in lower pH and lower detections...?
+# m3 <- glm(EnvDetection ~ PercentAg + Season + Buffered + Permanence +
+#           DaysSinceLastPrecipitation_5mm,
+#           data = invert, family = binomial())
+
 # ...water quality index model ----
 # must log transform to account for heteroscedasticity in response
 m4 <- lm(LogConductivity ~ PercentAg + Buffered + Season + Permanence, 
@@ -260,7 +268,8 @@ m4 <- lm(LogConductivity ~ PercentAg + Buffered + Season + Permanence,
 
 
 # ...pH model ----
-m5 <- lm(pH_probe ~ PercentAg + Buffered + Season + Permanence, 
+m5 <- lm(pH_probe ~ PercentAg + Buffered + Season + Permanence +
+           PrecipitationAmount_7days, 
          data = invert)
 
 # good
@@ -275,6 +284,10 @@ model2 <- update(model,
                  Permanence %~~% Season,
                  PercentAg %~~% Buffered)
 summary(model2, conserve = TRUE)
+
+ggplot(invert, aes(x = as.factor(EnvDetection), y = PrecipitationAmount_7days)) +
+  geom_boxplot() + my_theme
+
 
 #------------------------------------------------------------------------------#
 #                             model diagnostics                             ----                        

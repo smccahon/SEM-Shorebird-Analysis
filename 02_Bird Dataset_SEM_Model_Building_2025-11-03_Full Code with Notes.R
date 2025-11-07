@@ -2,7 +2,7 @@
 #           SEM Model Building            #
 #   Drivers of Shorebird Body Condition   #
 # Created by Shelby McCahon on 10/27/2025 #
-#         Modified on 11/03/2025          #
+#         Modified on 11/05/2025          #
 #-----------------------------------------#
 
 # load packages
@@ -10,6 +10,7 @@ library(piecewiseSEM)
 library(tidyverse)
 library(dplyr)
 library(lme4)
+library(nlme)
 library(glmmTMB)
 library(multcompView)
 library(DHARMa)
@@ -17,6 +18,7 @@ library(car)
 library(AICcmodavg)
 library(statmod)
 library(MuMIn)
+library(MASS)
 
 #------------------------------------------------------------------------------#
 #                        load data and organize datasets                    ----                        
@@ -83,16 +85,42 @@ birds <- birds %>%
   ungroup()
 
 # add a 1 to each value of Fat to avoid zeros (gamma can now be used)
-# birds <- birds %>% 
-#   mutate(Fat = Fat + 0.001)
+ birds <- birds %>% 
+    mutate(Fat = Fat + 1)
 
 # extract one row per site to avoid pseudoreplication in analysis (n = 24 wetlands)
 site_data <- birds %>%
-  distinct(Site, SPEI, PercentAg, Season, EnvDetection)
+  distinct(Site, SPEI, PercentAg, Season, EnvDetection, AnnualSnowfall_in,
+           DaysSinceLastPrecipitation_5mm, PrecipitationAmount_7days)
 
 # birds <- birds %>%
 #    filter(complete.cases(BCI.NoEvent, Standardized.Pec.NoEvent, 
 #                          PlasmaDetection))
+
+
+#------------------------------------------------------------------------------#
+#                           test for correlations                           ----                        
+#------------------------------------------------------------------------------# 
+
+# bird correlations
+cor(birds$Season, birds$SPEI) # yes
+cor(birds$BCI.NoEvent, birds$FatteningIndex, use = "complete.obs") # no
+cor(birds$PercentAg, birds$SPEI) # no
+cor(birds$time_hours, birds$Season) # no
+cor(birds$PlasmaDetection, birds$EnvDetection, use = "complete.obs") # no
+cor(birds$PlasmaDetection, birds$PercentAg, use = "complete.obs") # no
+cor(birds$MigStatus, birds$Season) # no
+cor(birds$MigStatus, birds$PlasmaDetection, use = "complete.obs") # no
+cor(birds$SPEI, birds$AnnualSnowfall_in) # no
+cor(birds$Season, birds$AnnualSnowfall_in, use = "complete.obs") # no
+
+m <- glm(PlasmaDetection ~ SPEI + AnnualSnowfall_in, data = birds)
+summary(m)
+
+# site data correlations (none of interest)
+cor(site_data$PercentAg, site_data$SPEI) # no
+cor(site_data$SPEI, site_data$AnnualSnowfall_in) # no
+cor(site_data$PercentAg, site_data$AnnualSnowfall_in) # no
 
 
 #------------------------------------------------------------------------------#
@@ -113,7 +141,8 @@ site_data <- birds %>%
 # removed season to avoid overfitting the data
 # model without season is also preferred (AICcwt = 0.84), even though
 # that claim is significant in dSEP test
-m1 <- glm(EnvDetection ~ PercentAg + SPEI, data = site_data, 
+m1 <- glm(EnvDetection ~ PercentAg + SPEI, 
+          data = site_data, 
           family = "binomial")
 
 # m2 <- glm(EnvDetection ~ PercentAg + SPEI + Season, data = site_data, 
@@ -151,29 +180,44 @@ m1 <- glm(EnvDetection ~ PercentAg + SPEI, data = site_data,
 m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
              MigStatus + time_hours + (1|Species),
            data = birds, family = "binomial")
+
+# add snowfall? model with this variable had WAY higher AICc wt (1)
+# including this variable made the effect of SPEI on detection significant and
+# in the direction of our prediction despite not being correlated 
+# (wetter conditions = more detections)
+# however, the effect of annual snowfall on plasma detection is significant in
+# the opposite direction of our prediction (more snowfall = less predictions)
+# this may be because spring 2022 had lower annual snowfall but very high
+# detection...the amount of snowfall probably isn't as important as when the
+# snowmelt occurred
+# m <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+#                 MigStatus + time_hours + AnnualSnowfall_in + (1|Species),
+#               data = birds, family = "binomial")
 # 
-# # WITHOUT RANDOM EFFECT
-# m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+# # add precipitation? days since last precipitation is a better predictor than
+# # precipitation amount
+# # including this variable makes the effect of SPEI on detection significant
+# # (wetter conditions = more detections)
+# # however, the effect of days since last precipitation on detection is sign.
+# # and in the opposite direction of our prediction 
+# #(more recent precipitation = less detections)...
+# m <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+#                 MigStatus + time_hours + DaysSinceLastPrecipitation_5mm +
+#                 (1|Species),
+#               data = birds, family = "binomial")
+
+# random effect of species needed? no, but there is variance in random effect model
+# m1 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
+#                  MigStatus + (1|Species),
+#                data = birds, family = "binomial")
+#  
+#  m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
 #                  MigStatus,
 #                data = birds, family = "binomial")
- 
- 
-# model_names <- paste0("m", 1:2)
-# models <- mget(model_names)
-# aictab(models, modnames = model_names)
-
-# random effect of species needed? no, but results differ...
-# m1 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
-#                 MigStatus + (1|Species),
-#               data = birds, family = "binomial")
-# 
-# m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
-#                 MigStatus,
-#               data = birds, family = "binomial")
-# 
-# model_names <- paste0("m", 1:2)
-# models <- mget(model_names)
-# aictab(models, modnames = model_names)
+#  
+#  model_names <- paste0("m", 1:2)
+#  models <- mget(model_names)
+#  aictab(models, modnames = model_names)
 
 # ...body condition index model ----
 # site as a random effect caused model to fail to converge
@@ -259,9 +303,76 @@ m4 <- glmmTMB(FatteningIndex ~ MigStatus + Season + SPEI +
 # can't get a good model fit...what to do with 0s?
 # results change quite a bit with the distribution
 # heavily right skewed
-# m5 <- glm(Fat ~ PercentAg + Season + SPEI +
-#                 PlasmaDetection + MigStatus, data = birds,
-#               family = Gamma(link = "log"))
+# I don't think I can use gamma (not truly continuous)
+# i think issues are arrising because there's multiples of integers...
+# ordinal would be ideal
+m5 <- glm(Fat ~ PercentAg + Season + SPEI +
+                PlasmaDetection + MigStatus, data = birds,
+               family = Gamma(link = "log"))
+
+# normal linear model?
+m5 <- lm(Fat ~ PercentAg + Season + SPEI +
+            PlasmaDetection + MigStatus, data = birds)
+
+# no
+plot(m5)
+
+# variance increases with mean (residuals fan out)
+# model convergence issues in SEM...
+m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+              data = birds,
+              weights = varPower(),
+          control = list(maxIter = 200, msMaxIter = 200),
+          na.action = na.omit)
+
+plot(m5)
+
+# vary weights by season?
+m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+                   data = birds,
+                   weights = varIdent(form = ~1 | Season),
+                   na.action = na.omit)
+
+m_base <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+              data = birds, na.action = na.omit)
+
+# Fit model with variance by season
+m_var <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+             data = birds, weights = varIdent(form = ~1 | Season),
+             na.action = na.omit)
+
+# Compare models
+anova(m_base, m_var)
+
+m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+          data = birds,
+          na.action = na.omit)
+
+plot(m5, resid(., type = "normalized") ~ birds$Season)
+
+
+
+confint(m5)
+
+plot(m5)
+
+# random effect does not improve model much
+# m5 <- glmmTMB(Fat ~ PercentAg + Season + SPEI +
+#             PlasmaDetection + MigStatus + (1|Species), data = birds,
+#           family = Gamma(link = "log"))
+
+# log-linear does not work...lots of heteroscedasticity
+# m5 <- lm(log(Fat) ~ PercentAg + Season + SPEI +
+#             PlasmaDetection + MigStatus, data = birds)
+
+plot(m5)
+
+
+hist(birds$Fat)
+summary(birds$Fat)
+
+summary(m5)
+
 
 # # Deviance residuals vs fitted values
 # plot(m5$fitted.values, residuals(m5, type = "deviance"),
@@ -346,15 +457,23 @@ m4 <- glmmTMB(FatteningIndex ~ MigStatus + Season + SPEI +
 # not including fat due to model diagnostics issues
 model <- psem(m1,m2,m3,m4)
 summary(model, conserve = TRUE)
-# sem <- update(model, EnvDetection %~~% time_hours)
-# 
-# summary(sem)
+sem <- update(model,Season %~~% SPEI) # must include due to known correlation
+summary(sem, conserve  = TRUE)
+
 # summary(model)
 
 # ...model comparison
 # model_names <- paste0("m", 6:7)
 # models <- mget(model_names)
 # aictab(models, modnames = model_names)
+
+
+# trying to include fat again
+model <- psem(m1,m2,m3,m4,m5)
+summary(model, conserve = TRUE)
+sem <- update(model,Season %~~% SPEI,
+              Fat) # must include due to known correlation
+summary(sem, conserve  = TRUE)
 
 #------------------------------------------------------------------------------#
 #                           model diagnostics                               ----                        
@@ -374,6 +493,7 @@ testOutliers(simulationOutput)
 testQuantiles(simulationOutput) 
 
 plotResiduals(simulationOutput, form = model.frame(m2)$PercentAg) # good
+plotResiduals(simulationOutput, form = model.frame(m2)$AnnualSnowfall_in) # good
 plotResiduals(simulationOutput, form = model.frame(m2)$MigStatus)  # good
 plotResiduals(simulationOutput, form = model.frame(m2)$EnvDetection)  # some pattern
 plotResiduals(simulationOutput, form = model.frame(m2)$Season) # good
@@ -418,7 +538,7 @@ plot(simulationOutput)
 testDispersion(m5) 
 testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
-testQuantiles(simulationOutput) 
+testQuantiles(simulationOutput) # significant
 
 plotResiduals(simulationOutput, form = model.frame(m5)$PercentAg) # some pattern
 plotResiduals(simulationOutput, form = model.frame(m5)$PlasmaDetection) # bad
