@@ -2,7 +2,7 @@
 #           SEM Model Building            #
 #   Drivers of Shorebird Body Condition   #
 # Created by Shelby McCahon on 10/27/2025 #
-#         Modified on 11/05/2025          #
+#         Modified on 11/10/2025          #
 #-----------------------------------------#
 
 # load packages
@@ -93,9 +93,8 @@ site_data <- birds %>%
   distinct(Site, SPEI, PercentAg, Season, EnvDetection, AnnualSnowfall_in,
            DaysSinceLastPrecipitation_5mm, PrecipitationAmount_7days)
 
-# birds <- birds %>%
-#    filter(complete.cases(BCI.NoEvent, Standardized.Pec.NoEvent, 
-#                          PlasmaDetection))
+birds <- birds %>%
+  filter(complete.cases(BCI.NoEvent, Fat, PlasmaDetection))
 
 
 #------------------------------------------------------------------------------#
@@ -306,55 +305,99 @@ m4 <- glmmTMB(FatteningIndex ~ MigStatus + Season + SPEI +
 # I don't think I can use gamma (not truly continuous)
 # i think issues are arrising because there's multiples of integers...
 # ordinal would be ideal
-m5 <- glm(Fat ~ PercentAg + Season + SPEI +
-                PlasmaDetection + MigStatus, data = birds,
-               family = Gamma(link = "log"))
+m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+             data = birds, 
+             weights = varIdent(form = ~1 | Season),
+             na.action = na.omit)
+
+# summary(m5)
+# confint(m5)
+# 
+# plot(m5,
+#      ylim = c(-2,2))
+# 
+# m <- lm(Fat ~ PercentAg + SPEI + PlasmaDetection + MigStatus,
+#         data = birds)
+# 
+# plot(m5)
 
 # normal linear model?
-m5 <- lm(Fat ~ PercentAg + Season + SPEI +
-            PlasmaDetection + MigStatus, data = birds)
+# birds_complete <- birds %>% 
+#   filter(complete.cases(Fat, PercentAg, Season, SPEI,
+#                         PlasmaDetection, MigStatus))
+# 
+# m5 <- lm(Fat ~ PercentAg + Season + SPEI +
+#             PlasmaDetection, data = birds_complete)
+# 
+# plot(m5) # lots of heteroscedasticity
 
-# no
-plot(m5)
+
+# check residuals vs fitted values from each covariate
+# no issues from the covariates themselves
+
+# % surrounding ag (no issues)
+# plot(birds_complete$PercentAg, resid(m5),
+#      xlab = "% surrounding cropland",
+#      ylab = "residuals")
+# 
+# Season (ISSUE) -> could try varIdent with Season
+#  plot(as.factor(birds_complete$Season), resid(m5),
+#      xlab = "season",
+#      ylab = "residuals")
+# 
+# no severe issues
+#plot(birds_complete$SPEI, resid(m5),
+#      xlab = "drought (SPEI)",
+#      ylab = "residuals")
+# 
+# no severe issues
+# plot(as.factor(birds_complete$PlasmaDetection), resid(m5),
+#      xlab = "plasma detection",
+#      ylab = "residuals")
+# 
+# no severe issues
+# plot(as.factor(birds_complete$MigStatus), resid(m5),
+#      xlab = "migratory status",
+#      ylab = "residuals")
+
 
 # variance increases with mean (residuals fan out)
 # model convergence issues in SEM...
-m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
-              data = birds,
-              weights = varPower(),
-          control = list(maxIter = 200, msMaxIter = 200),
-          na.action = na.omit)
+# m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#               data = birds,
+#               weights = varPower(),
+#           control = list(maxIter = 200, msMaxIter = 200),
+#           na.action = na.omit)
 
-plot(m5)
 
-# vary weights by season?
-m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
-                   data = birds,
-                   weights = varIdent(form = ~1 | Season),
-                   na.action = na.omit)
-
-m_base <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
-              data = birds, na.action = na.omit)
-
-# Fit model with variance by season
-m_var <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
-             data = birds, weights = varIdent(form = ~1 | Season),
-             na.action = na.omit)
+# vary weights by season
+# helped a little
+# m_var <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#              data = birds, 
+#              weights = varIdent(form = ~1 | Season),
+#              na.action = na.omit)
+# 
+# m_base <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#               data = birds, na.action = na.omit)
 
 # Compare models
-anova(m_base, m_var)
-
-m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
-          data = birds,
-          na.action = na.omit)
-
-plot(m5, resid(., type = "normalized") ~ birds$Season)
+# varying the weights by season improved model fit (much lower AIC)
+# anova(m_base, m_var)
 
 
+# vary weights by migratory status
 
-confint(m5)
+# helped but not by much
+# m_var <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#               data = birds, 
+#               weights = varIdent(form = ~1 | MigStatus),
+#               na.action = na.omit)
+#  
+# m_base <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#                data = birds, na.action = na.omit)
 
-plot(m5)
+# Compare models -> virtually no difference
+# anova(m_base, m_var)
 
 # random effect does not improve model much
 # m5 <- glmmTMB(Fat ~ PercentAg + Season + SPEI +
@@ -364,14 +407,6 @@ plot(m5)
 # log-linear does not work...lots of heteroscedasticity
 # m5 <- lm(log(Fat) ~ PercentAg + Season + SPEI +
 #             PlasmaDetection + MigStatus, data = birds)
-
-plot(m5)
-
-
-hist(birds$Fat)
-summary(birds$Fat)
-
-summary(m5)
 
 
 # # Deviance residuals vs fitted values
@@ -469,11 +504,13 @@ summary(sem, conserve  = TRUE)
 
 
 # trying to include fat again
-model <- psem(m1,m2,m3,m4,m5)
-summary(model, conserve = TRUE)
-sem <- update(model,Season %~~% SPEI,
-              Fat) # must include due to known correlation
-summary(sem, conserve  = TRUE)
+# issue is, fattening index ~ BCI correlation now exists in SEM with inclusion
+# of fat, so I'd need to use a correlated error but that would reduce to n = 86
+# model <- psem(m1,m2,m3,m4,m5)
+# summary(model, conserve = TRUE)
+# sem <- update(model,Season %~~% SPEI,
+#               Fat %~~% BCI.NoEvent) # must include due to known correlation
+# summary(sem, conserve  = TRUE)
 
 #------------------------------------------------------------------------------#
 #                           model diagnostics                               ----                        
@@ -540,12 +577,10 @@ testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
 testQuantiles(simulationOutput) # significant
 
-plotResiduals(simulationOutput, form = model.frame(m5)$PercentAg) # some pattern
-plotResiduals(simulationOutput, form = model.frame(m5)$PlasmaDetection) # bad
+plotResiduals(simulationOutput, form = model.frame(m5)$PercentAg) #  good
+plotResiduals(simulationOutput, form = model.frame(m5)$PlasmaDetection) # good
 plotResiduals(simulationOutput, form = model.frame(m5)$MigStatus)  # bad
-plotResiduals(simulationOutput, form = model.frame(m5)$time_hours)  # good
 plotResiduals(simulationOutput, form = model.frame(m5)$Season) # very bad
-plotResiduals(simulationOutput, form = model.frame(m5)$BCI) # good
 plotResiduals(simulationOutput, form = model.frame(m5)$SPEI) # some pattern
 
 # pectoral muscle model --- all good, no patterns
