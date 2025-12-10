@@ -1,8 +1,8 @@
 #----------------------------------------#
 #           SEM Model Building           #
-#      Spring Invertebrate Dataset       #
-#  Created by Shelby McCahon on 11/04/25 #
-#         Modified on 11/11/2025         #
+#   Cleaned Spring Invertebrate Dataset  #
+#  Created by Shelby McCahon on 12/10/25 #
+#         Modified on 12/10/2025         #
 #----------------------------------------#
 
 # load packages
@@ -135,11 +135,6 @@ table(invert$Permanence) # very uneven, not worth including
 # variables of interest and for simplicity:
 # % cropland, biomass, diversity, water neonic conc
 
-ggplot(invert, aes(x = as.factor(WaterNeonicDetection), y = Biomass)) + 
-  geom_boxplot() + my_theme
-
-wilcox.test(invert$WaterNeonicDetection, invert$Biomass) # not significant
-
 #------------------------------------------------------------------------------#
 #         fit individual models to full dataset (structural equations)      ----                        
 #------------------------------------------------------------------------------# 
@@ -153,6 +148,7 @@ wilcox.test(invert$WaterNeonicDetection, invert$Biomass) # not significant
 # next best is gamma
 # log also works, but you get similar results anyways, and gamma fits data
 # better
+
 invert <- invert %>% 
   mutate(Biomass.m = Biomass + 0.001)
 
@@ -164,27 +160,20 @@ invert.pos <- invert %>%
 
 # specify model
 m1 <- glm(Biomass.m ~ LogWaterNeonic.m + PercentAg,
-           data = invert.pos,
-           family = Gamma(link = "log"))
-
-# plot(m1) # seems fine
-
-# view individual relationships
-# clear negative trend
-# ggplot(invert.pos, aes(x = PercentAg, y = Biomass.m)) +
-# geom_point() + my_theme + geom_smooth(method = "lm")
+          data = invert.pos,
+          family = Gamma(link = "log"))
 
 # # extract standardized coefficients manually from gamma distribution
 beta <- coef(m1)["PercentAg"]
 sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
-              trigamma(1 / summary(m1)$dispersion)) # observation-level variance
+               trigamma(1 / summary(m1)$dispersion)) # observation-level variance
 sd_x <- sd(invert$PercentAg)
 beta_std <- beta * (sd_x / sd_y)
 beta_std # -0.169 is standardized estimate
- 
+
 beta <- coef(m1)["LogWaterNeonic.m"]
 sd_y <- sqrt(var(predict(m1, type = "link")) + # variance (y)
-              trigamma(1 / summary(m1)$dispersion)) # observation-level variance
+               trigamma(1 / summary(m1)$dispersion)) # observation-level variance
 sd_x <- sd(invert$PercentAg)
 beta_std <- beta * (sd_x / sd_y)
 beta_std # -0.147 is standardized estimate
@@ -194,28 +183,22 @@ beta_std # -0.147 is standardized estimate
 # use poisson > negative binomial for consistency with other invert analysis
 # dispersion = 1.30
 m2 <- glm(Diversity ~ LogWaterNeonic.m + PercentAg,
-            data = invert.pos,
-            family = poisson())
+          data = invert.pos,
+          family = poisson())
 
 # plot(m2) # seems fine
- 
+
 # ...water neonic conc. model ----
 
 # linear model seems fine
 m3 <- lm(LogWaterNeonic.m ~ PercentAg,
-          data = invert.pos)
- 
+         data = invert.pos)
+
 # plot(m3) # seems fine
 
-# clear positive relationship
-# ggplot(invert.pos, aes(x = PercentAg, y = LogWaterNeonic.m
-)) + 
-#   geom_point() + my_theme + geom_smooth(method = "lm")
 
 # run piecewiseSEM
 model <- psem(m1,m2,m3)
 summary(model, conserve = TRUE)
 
-
-# cor(invert.pos$PercentAg, invert.pos$LogWaterNeonic.m) # 0.477
-# cor(invert.pos$Diversity, invert.pos$Biomass.m) # 0.461
+  

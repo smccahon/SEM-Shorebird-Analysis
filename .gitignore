@@ -3,6 +3,7 @@ resources/
 original_data/
 cleaned_data/
 notes/
+figures/
 path_diagrams/
 meetings/
 .Rhistory

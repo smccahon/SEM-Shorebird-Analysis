@@ -2,7 +2,7 @@
 #           SEM Model Building            #
 #   Drivers of Shorebird Body Condition   #
 # Created by Shelby McCahon on 10/27/2025 #
-#         Modified on 11/10/2025          #
+#         Modified on 12/10/2025          #
 #-----------------------------------------#
 
 # load packages
@@ -52,6 +52,10 @@ birds <- birds %>%
       InvertPesticideDetection == "Y" ~ 1,
       InvertPesticideDetection == "N" ~ 0,
       TRUE ~ NA_real_), 
+    Fat.Binomial = case_when(
+      Fat >= 2 ~ 1,
+      Fat < 2 ~ 0,
+      TRUE ~ NA_real_),
     AnyDetection = case_when(
       AnyDetection == "Y" ~ 1,
       AnyDetection == "N" ~ 0,
@@ -78,24 +82,26 @@ birds <- birds %>%
       Permanence == "Permanent" ~ 3,
       TRUE ~ NA_real_))
 
-# Only include species with at least three individuals
+birds <- birds %>%
+  filter(complete.cases(PlasmaDetection,
+                        Fat, BCI.NoEvent,
+                        FatteningIndex,
+                        Uric))
+
+# Only include species with at least three individuals (n = 80)
 birds <- birds %>% 
   group_by(Species) %>% 
   filter(n() >= 3) %>% 
   ungroup()
 
 # add a 1 to each value of Fat to avoid zeros (gamma can now be used)
- birds <- birds %>% 
-    mutate(Fat = Fat + 1)
+ # birds <- birds %>% 
+ #   mutate(Fat = Fat + 1)
 
 # extract one row per site to avoid pseudoreplication in analysis (n = 24 wetlands)
 site_data <- birds %>%
   distinct(Site, SPEI, PercentAg, Season, EnvDetection, AnnualSnowfall_in,
            DaysSinceLastPrecipitation_5mm, PrecipitationAmount_7days)
-
-birds <- birds %>%
-  filter(complete.cases(BCI.NoEvent, Fat, PlasmaDetection))
-
 
 #------------------------------------------------------------------------------#
 #                           test for correlations                           ----                        
@@ -113,14 +119,22 @@ cor(birds$MigStatus, birds$PlasmaDetection, use = "complete.obs") # no
 cor(birds$SPEI, birds$AnnualSnowfall_in) # no
 cor(birds$Season, birds$AnnualSnowfall_in, use = "complete.obs") # no
 
-m <- glm(PlasmaDetection ~ SPEI + AnnualSnowfall_in, data = birds)
-summary(m)
+# birds_complete correlations
+cor(birds_complete$Season, birds_complete$SPEI) # yes
+cor(birds_complete$BCI.NoEvent, birds_complete$FatteningIndex, use = "complete.obs") # no
+cor(birds_complete$PercentAg, birds_complete$SPEI) # no
+cor(birds_complete$time_hours, birds_complete$Season) # no
+cor(birds_complete$PlasmaDetection, birds_complete$EnvDetection, use = "complete.obs") # no
+cor(birds_complete$PlasmaDetection, birds_complete$PercentAg, use = "complete.obs") # no
+cor(birds_complete$MigStatus, birds_complete$Season) # no
+cor(birds_complete$MigStatus, birds_complete$PlasmaDetection, use = "complete.obs") # no
+cor(birds_complete$SPEI, birds_complete$AnnualSnowfall_in) # no
+cor(birds_complete$Season, birds_complete$AnnualSnowfall_in, use = "complete.obs") # no
 
 # site data correlations (none of interest)
 cor(site_data$PercentAg, site_data$SPEI) # no
 cor(site_data$SPEI, site_data$AnnualSnowfall_in) # no
 cor(site_data$PercentAg, site_data$AnnualSnowfall_in) # no
-
 
 #------------------------------------------------------------------------------#
 #         fit individual models to full dataset (structural equations)      ----                        
@@ -180,6 +194,11 @@ m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Season +
              MigStatus + time_hours + (1|Species),
            data = birds, family = "binomial")
 
+# with Julian day
+m2 <- glmmTMB(PlasmaDetection ~ PercentAg + SPEI + EnvDetection + Julian +
+                MigStatus + time_hours + (1|Species),
+              data = birds, family = "binomial")
+
 # add snowfall? model with this variable had WAY higher AICc wt (1)
 # including this variable made the effect of SPEI on detection significant and
 # in the direction of our prediction despite not being correlated 
@@ -231,6 +250,10 @@ m3 <- lm(BCI.NoEvent ~ time_hours + PlasmaDetection + SPEI + PercentAg +
            Season,
          data = birds)
 
+# with Julian
+m3 <- lm(BCI.NoEvent ~ time_hours + PlasmaDetection + SPEI + PercentAg + 
+           Julian,
+         data = birds)
 
 # ...fattening index model ----
 # species performs better than migratory status alone (AICc wt = 0.96)
@@ -241,10 +264,15 @@ m3 <- lm(BCI.NoEvent ~ time_hours + PlasmaDetection + SPEI + PercentAg +
 # species as a random or fixed effect!
 # including body condition in fattening index model significantly improved fit
 
-# WITH RANDOM EFFECT
-m4 <- glmmTMB(FatteningIndex ~ MigStatus + Season + SPEI + 
-                PercentAg + time_hours + PlasmaDetection + EnvDetection + 
-               (1|Species), data = birds)
+m4 <- lm(FatteningIndex ~ MigStatus + Season + SPEI + 
+                PercentAg + time_hours + PlasmaDetection + EnvDetection, 
+         data = birds)
+
+# with Julian
+m4 <- lm(FatteningIndex ~ MigStatus + Julian + SPEI + 
+                PercentAg + time_hours + PlasmaDetection + EnvDetection, 
+              data = birds)
+
 
 # m4 <- lm(FatteningIndex ~ BCI.NoEvent + Season + SPEI + 
 #                 PercentAg + time_hours + PlasmaDetection + EnvDetection + 
@@ -253,7 +281,6 @@ m4 <- glmmTMB(FatteningIndex ~ MigStatus + Season + SPEI +
 # WITHOUT RANDOM EFFECT
 # m4 <- lm(FatteningIndex ~ BCI.NoEvent + MigStatus + Season + SPEI + PercentAg +
 #                  time_hours + PlasmaDetection + EnvDetection, data = birds)
-
 
 # view Fattening Index ~ Plasma Detection
 # birds %>%
@@ -303,18 +330,76 @@ m4 <- glmmTMB(FatteningIndex ~ MigStatus + Season + SPEI +
 # results change quite a bit with the distribution
 # heavily right skewed
 # I don't think I can use gamma (not truly continuous)
-# i think issues are arrising because there's multiples of integers...
-# ordinal would be ideal
-m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
-             data = birds, 
-             weights = varIdent(form = ~1 | Season),
-             na.action = na.omit)
+# i think issues are arising because there's multiples of integers...
+# ordinal would be ideal, but not possible in piecewiseSEM
+# I tried lm with various transformations but heteroscedastsicity is still
+# highly prevalent
 
+# # vary weights by season?
+# m5.c <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#              data = birds_complete, 
+#              weights = varIdent(form = ~1 | Season),
+#              na.action = na.omit)
+# 
+# plot(m5.c) # I guess okay?
 # summary(m5)
 # confint(m5)
 # 
+# # model fat as counts
+# m5.c <- glm(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#           data = birds_complete,
+#           na.action = na.omit,
+#           family = poisson())
+# 
+# plot(m5.c)
+# 
+# summary(m5)
+# confint(m5)
+
+# treat fat is binomial? fat vs no fat
+m5 <- glm(Fat.Binomial ~ PercentAg + Season + SPEI + PlasmaDetection + 
+                MigStatus,
+         data = birds,
+         family = binomial(link = "logit"))
+
+# with Julian
+m5 <- glm(Fat.Binomial ~ PercentAg + Julian + SPEI + PlasmaDetection + 
+            MigStatus,
+          data = birds,
+          family = binomial(link = "logit"))
+
+# # treat fat as negative binomial
+# m5.c <- glm.nb(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#           data = birds_complete)
+# 
+# summary(m5.c)
+# 
+# # treat fat as negative binomial
+# m5.c <- glm.nb(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#                data = birds_complete)
+
+# ordinal regression -- ideal but doesn't work in piecewiseSEM
+# birds$Fat <- factor(birds$Fat, ordered = TRUE)
+# m_fat <- polr(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
+#               data = birds, Hess = TRUE)  # Hess=TRUE gives standard errors
+# summary(m_fat)
+# 
+# coefs <- coef(summary(m_fat))
+# pvals <- pnorm(abs(coefs[, "t value"]), lower.tail = FALSE) * 2
+# cbind(coefs, pvals)
+
+# log transformation is NOT enough to handle heteroscedasticity
+# birds$Fat <- as.numeric(birds$Fat)
+# m <- lm(log(Fat) ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus, 
+#    data=birds)
+# 
+# summary(m)
+# 
+# plot(m)
+
+# 
 # plot(m5,
-#      ylim = c(-2,2))
+#       ylim = c(-2,2))
 # 
 # m <- lm(Fat ~ PercentAg + SPEI + PlasmaDetection + MigStatus,
 #         data = birds)
@@ -467,9 +552,12 @@ m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
 # keep random effect in for consistency with model (species is now always
 # accounted for)
 
-# WITH RANDOM EFFECT OF SPECIES
-# m7 <- glmmTMB(Uric ~ time_hours + PercentAg + Season + SPEI +
-#                 PlasmaDetection + MigStatus + (1|Species), data = birds)
+m6 <- lm(Uric ~ time_hours + PercentAg + Season + SPEI +
+                 PlasmaDetection + MigStatus, data = birds)
+
+# with Julian
+m6 <- lm(Uric ~ time_hours + PercentAg + Season + SPEI +
+           PlasmaDetection + MigStatus, data = birds)
 # 
 # m7 <- glmmTMB(Uric ~ time_hours + PercentAg + Season + SPEI +
 #              PlasmaDetection + MigStatus, data = birds)
@@ -490,27 +578,15 @@ m5 <- gls(Fat ~ PercentAg + Season + SPEI + PlasmaDetection + MigStatus,
 
 # run piecewiseSEM
 # not including fat due to model diagnostics issues
-model <- psem(m1,m2,m3,m4)
+model <- psem(m1,m2,m3,m4, m5, m6)
 summary(model, conserve = TRUE)
-sem <- update(model,Season %~~% SPEI) # must include due to known correlation
-summary(sem, conserve  = TRUE)
+sem <- update(model,Season %~~% SPEI,
+              FatteningIndex %~~% BCI.NoEvent,
+              Fat.Binomial %~~% BCI.NoEvent,
+              Fat.Binomial %~~% FatteningIndex,
+              EnvDetection %~~% time_hours)
 
-# summary(model)
-
-# ...model comparison
-# model_names <- paste0("m", 6:7)
-# models <- mget(model_names)
-# aictab(models, modnames = model_names)
-
-
-# trying to include fat again
-# issue is, fattening index ~ BCI correlation now exists in SEM with inclusion
-# of fat, so I'd need to use a correlated error but that would reduce to n = 86
-# model <- psem(m1,m2,m3,m4,m5)
-# summary(model, conserve = TRUE)
-# sem <- update(model,Season %~~% SPEI,
-#               Fat %~~% BCI.NoEvent) # must include due to known correlation
-# summary(sem, conserve  = TRUE)
+summary(sem, conserve = TRUE)
 
 #------------------------------------------------------------------------------#
 #                           model diagnostics                               ----                        

@@ -2,7 +2,7 @@
 #           SEM Model Building           #
 #          Full Dataset Overlap          #
 # Created by Shelby McCahon on 9/15/2025 #
-#         Modified on 11/03/2025         #
+#         Modified on 12/10/2025         #
 #----------------------------------------#
 
 # load packages
@@ -196,6 +196,10 @@ full <- full %>%
       InvertPesticideDetection == "Y" ~ 1,
       InvertPesticideDetection == "N" ~ 0,
       TRUE ~ NA_real_),
+    Fat.Binomial = case_when(
+      Fat >= 2 ~ 1,
+      Fat < 2 ~ 0,
+      TRUE ~ NA_real_),
     PlasmaDetection = case_when(
       PlasmaDetection == "Y" ~ 1,
       PlasmaDetection == "N" ~ 0,
@@ -218,16 +222,19 @@ full <- full %>%
       TRUE ~ NA_real_))
 
 
-# use complete cases of linked variables (n = 114)
-# full <- full %>%
-#  filter(complete.cases(BCI.NoEvent, Standardized.Pec.NoEvent,
-#                        PlasmaDetection))
+# use complete cases of linked variables (n = 67)
+full <- full %>%
+   filter(complete.cases(BCI.NoEvent, Fat.Binomial,
+                         PlasmaDetection,
+                         FatteningIndex,
+                         Uric))
 
-# Only include species with at least three individuals (n = 114)
-full <- full %>% 
-   group_by(Species) %>% 
-    filter(n() >= 3) %>% 
-    ungroup()
+# Only include species with at least three individuals (n = 67)
+# don't need to do anymore because random effect does not converge with 63 birds
+# full <- full %>% 
+#    group_by(Species) %>% 
+#     filter(n() >= 3) %>% 
+#     ungroup()
 
 # I've decided to model response body condition metrics as correlated errors, 
 # and not specify direction...otherwise I get spurious results (birds with 
@@ -292,7 +299,7 @@ m1 <- glm(Biomass ~ PercentAg, data = site_data,
                  trigamma(1 / summary(m1)$dispersion)) # observation-level variance
   sd_x <- sd(site_data$PercentAg)
   beta_std <- beta * (sd_x / sd_y)
-  beta_std # -0.541 is standardized estimate
+  beta_std # -0.586 is standardized estimate
 
 
 #---
@@ -318,6 +325,8 @@ m2 <- glm(PlasmaDetection ~ PercentAg + Season + EnvDetection + time_hours +
                 data = full,
                 na.action = na.omit,
                 family = binomial(link = "logit"))
+
+
   
 # glmer caused boundary (singular) fit warning
 
@@ -450,13 +459,11 @@ m3 <- lm(BCI.NoEvent ~ Biomass + PercentAg + PlasmaDetection +
 
 #### ...final fattening index model ----
   
-# WITH RANDOM EFFECT
+# WITH RANDOM EFFECT --> did not converge
 
-# variance = 0.1227
-m4 <- glmmTMB(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
-                 PlasmaDetection + time_hours + EnvDetection + (1|Species),
+m4 <- lm(FatteningIndex ~ Biomass + MigStatus + PercentAg + Season +
+                 PlasmaDetection + time_hours + EnvDetection,
                 data = full,
-                family = gaussian(),
                  na.action = na.omit)
   
 # does including pectoral muscle index improve model fit? 
@@ -583,6 +590,19 @@ m5 <- glm(EnvDetection ~ PercentAg,
           family = binomial(link = "logit"),
          data = site_data_wetland,
          na.action = na.omit)
+  
+  
+  m6 <- lm(Uric ~ time_hours + PercentAg + Season +
+             PlasmaDetection + MigStatus, data = full)
+
+  # relationship looks real
+#  ggplot(full, aes(x = PercentAg, y = Uric)) + geom_point()
+  
+  m7 <- glm(Fat.Binomial ~ PercentAg + Season + PlasmaDetection + 
+              MigStatus,
+            data = full,
+            family = binomial(link = "logit"))
+  
 
 # can we use full wetland dataset? answer is no, not reliably across predictors
 # will need to test each covariate individually to avoid overfitting
@@ -681,8 +701,15 @@ m5 <- glm(EnvDetection ~ PercentAg,
 #                            run piecewise SEMs                             ----                        
 #------------------------------------------------------------------------------# 
 # SEM
-model <- psem(m1, m2, m3, m4, m5)
+model <- psem(m1, m2, m3, m4, m5, m6, m7)
 summary(model, conserve = TRUE)
+sem <- update(model,
+              Fat.Binomial %~~% BCI.NoEvent,
+              Biomass %~~% EnvDetection,
+              FatteningIndex %~~% BCI.NoEvent,
+              Fat.Binomial %~~% FatteningIndex,
+              EnvDetection %~~% time_hours)
+summary(sem, conserve  = TRUE)
 
 # not needed with this dataset
 # model2 <- update(model, 

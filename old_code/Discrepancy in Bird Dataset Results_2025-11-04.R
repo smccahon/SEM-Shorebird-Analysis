@@ -141,7 +141,7 @@ ggplot(full, aes(x = PercentAg, y = FatteningIndex)) +
   labs(x = "% Surrounding Cropland",
        y = "Fattening Index (2023 birds)")
 
-ggplot(birds, aes(x = PercentAg, y = FatteningIndex)) +
+ggplot(birds, aes(x = PercentAg, y = FatteningIndex, color = time_hours)) +
   geom_point() + my_theme + 
   geom_hline(yintercept = 0,
              color = "red",
