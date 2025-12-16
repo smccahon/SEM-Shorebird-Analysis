@@ -2,7 +2,7 @@
 #           SEM Model Building            #
 #   Drivers of Shorebird Body Condition   #
 # Created by Shelby McCahon on 12/10/2025 #
-#         Modified on 12/10/2025          #
+#         Modified on 12/12/2025          #
 #-----------------------------------------#
 
 # load packages
@@ -157,7 +157,7 @@ m4 <- lm(FatteningIndex ~ MigStatus + Season + SPEI +
 # high fat: 2-5 [n = 27])
 
 m5 <- glm(Fat.Binomial ~ PercentAg + Season + SPEI + PlasmaDetection + 
-            MigStatus,
+            MigStatus + time_hours,
           data = birds,
           family = binomial(link = "logit"))
 

@@ -1,16 +1,13 @@
-This repository includes code and notes for Shelby McCahon's structural equation modeling analysis to better understand the direct and indirect effects of agriculture on shorebird body condition and prey availability in the Prairie Pothole Region. Folders, R scripts, and descriptions for files are listed below.
+This repository includes code and notes for Shelby McCahon's structural equation modeling analysis to better understand the direct and indirect effects of agriculture and drought on shorebird body condition and prey availability in the Prairie Pothole Region. Folders, R scripts, and descriptions for files are listed below.
 
 Date Created: August 12th, 2025
-Last Date Modified: October 23rd, 2025
+Last Date Modified: December 15th, 2025
 
-Folders and descriptions:
-1. cleaned_data (prepped files for analysis)
-2. original_data (raw files)
-3. resources (SEM PowerPoints, practice code, and other resources)
-4. old_code (original model building code)
-5. notes (text documents with variable correlations, transformations, findings, and any important errors)
+cleaned R scripts and descriptions: 
+1. 03_cleaned_Bird SEM_2025-12-10.R --> cleaned SEM code of 2021-2023 bird dataset with summary of notes from previous analyses
+2. 03_cleaned_Full SEM_2025-12-10.R --> cleaned SEM code of 2023 bird and invert dataset with summary of notes from previous analyses
+3. 03_cleaned_Invert SEM_2025-12.10.R --> cleaned SEM code of 2023 invert dataset with summary of notes from previous analyses
+4. 03_cleaned_Spring Invert SEM_2025-12-10.R --> cleaned SEM code of spring 2023 invert dataset with summary of notes from previous analyses
 
-R scripts and descriptions: 
-1. SEM_Data Preparation_2025-08-12 (data cleaning file)
-2. SEM_Model_Building_2025-09-15_2023 (model building code for 2023 data only)
-3. SEM_Variable Correlations_2025-09-15 (file to test for correlations among variables -- output saved in "SEM Correlations and Notes.txt")
+Notes:
+The old_code folder contains all original code with full description of notes for all analyses.

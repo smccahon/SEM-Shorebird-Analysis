@@ -2,7 +2,7 @@
 #           SEM Model Building            #
 #       2023 Full Dataset with Inverts    #
 # Created by Shelby McCahon on 12/10/2025 #
-#         Modified on 12/10/2025          #
+#         Modified on 12/11/2025          #
 #-----------------------------------------#
 
 # load packages
@@ -202,8 +202,8 @@ m7 <- lm(Uric ~ time_hours + PercentAg + Season +
 # Splitting the variable into low fat (0/1) and high fat (2-5) made the most 
 # sense and had good diagnostics (n = 42 low fat, 25 high fat)
 
-m8 <- glm(Fat.Binomial ~ PercentAg + Season + PlasmaDetection + 
-            MigStatus + Biomass + Diversity,
+m8 <- glm(Fat.Binomial ~ PercentAg + PlasmaDetection + 
+            MigStatus + Biomass + Diversity + time_hours,
           data = full,
           family = binomial(link = "logit"))
 
@@ -301,7 +301,7 @@ plotResiduals(simulationOutput, form = model.frame(m7)$Season) # good
 plotResiduals(simulationOutput, form = model.frame(m7)$PlasmaDetection) # good
 plotResiduals(simulationOutput, form = model.frame(m7)$EnvDetection) # good
 
-# # m8 --- GOOD, no significant violations
+# # m8 --- GOOD, no violations
 simulationOutput <- simulateResiduals(fittedModel = m8) 
 plot(simulationOutput)
 testDispersion(m8) 
@@ -309,7 +309,7 @@ testUniformity(simulationOutput)
 testOutliers(simulationOutput) 
 testQuantiles(simulationOutput) 
 
-plotResiduals(simulationOutput, form = model.frame(m8)$PercentAg) # some pattern
+plotResiduals(simulationOutput, form = model.frame(m8)$PercentAg) # good
 plotResiduals(simulationOutput, form = model.frame(m8)$Biomass) # good
 plotResiduals(simulationOutput, form = model.frame(m8)$MigStatus) # good
 plotResiduals(simulationOutput, form = model.frame(m8)$time_hours) # good
@@ -317,7 +317,4 @@ plotResiduals(simulationOutput, form = model.frame(m8)$Season) # good
 plotResiduals(simulationOutput, form = model.frame(m8)$PlasmaDetection) # good
 plotResiduals(simulationOutput, form = model.frame(m8)$EnvDetection) # good
 
-# diversity model (DHARMa diagnostics unreliable with effect size of 9)
-plot(residuals(m8, type = "deviance") ~ fitted(m8))
-abline(h = 0, col = "red") # reasonable fit
 
