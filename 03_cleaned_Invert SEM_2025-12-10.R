@@ -199,7 +199,7 @@ m3 <- glm(EnvDetection ~ PercentAg + Season + Buffered + Permanence,
 # ...water quality index model ----
 
 m4 <- lm(LogConductivity ~ PercentAg + Buffered + Season + Permanence, 
-
+        data = invert)
 
 # ...pH model ----
 m5 <- lm(pH_probe ~ PercentAg + Buffered + Season + Permanence, 
@@ -214,6 +214,18 @@ model2 <- update(model,
                  Permanence %~~% Season,
                  PercentAg %~~% Buffered)
 summary(model2, conserve = TRUE)
+
+#------------------------------------------------------------------------------#
+#                          VIF for component models                         ----                        
+#------------------------------------------------------------------------------# 
+
+# all below 3
+vif(m1)
+vif(m2)
+vif(m3)
+vif(m4)
+vif(m5)
+
 
 #------------------------------------------------------------------------------#
 #                             model diagnostics                             ----                        

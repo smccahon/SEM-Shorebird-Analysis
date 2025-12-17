@@ -201,4 +201,14 @@ m3 <- lm(LogWaterNeonic.m ~ PercentAg,
 model <- psem(m1,m2,m3)
 summary(model, conserve = TRUE)
 
+
+
+#------------------------------------------------------------------------------#
+#                         VIF of component models                           ----                        
+#------------------------------------------------------------------------------# 
+
+# both under 3
+vif(m1)
+vif(m2)
+
   
