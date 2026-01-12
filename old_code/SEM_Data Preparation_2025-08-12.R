@@ -336,7 +336,7 @@ wetland_cleaned <- wetland %>%
          Diversity, pH_probe, WaterTemp, WaterQuality, Permanence,
          Dist_Closest_Wetland_m, PercentLocalVeg_50m, ShorebirdsPresent,
          Wetland.Survey, Invert.Survey, Shorebird.Capture, PlasmaNeonic,
-         InvertPesticide, WaterNeonic)
+         InvertPesticide, WaterNeonic, AnnualPrecipitation_in)
 
 write.csv(wetland_cleaned, "cleaned_data/wetland_data_cleaned_2025-09-30.csv",
           row.names = FALSE)

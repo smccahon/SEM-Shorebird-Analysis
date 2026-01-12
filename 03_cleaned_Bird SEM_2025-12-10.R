@@ -2,7 +2,7 @@
 #           SEM Model Building            #
 #   Drivers of Shorebird Body Condition   #
 # Created by Shelby McCahon on 12/10/2025 #
-#         Modified on 12/12/2025          #
+#         Modified on 01/08/2026          #
 #-----------------------------------------#
 
 # load packages
@@ -19,6 +19,7 @@ library(AICcmodavg)
 library(statmod)
 library(MuMIn)
 library(MASS)
+library(semEff)
 
 #------------------------------------------------------------------------------#
 #                        load data and organize datasets                    ----                        

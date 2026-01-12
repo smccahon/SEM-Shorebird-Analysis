@@ -17,6 +17,7 @@ library(car)
 library(AICcmodavg)
 library(cplm)
 library(statmod)
+library(semEff)
 
 #------------------------------------------------------------------------------#
 #                        load data and organize dataset                     ----                        
